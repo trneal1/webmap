@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>NWS Dashboard</title>
+
+<style>
+body { margin:0; display:flex; font-family:Arial; }
+#map { width:70%; height:100vh; }
+#resizer { width:6px; cursor:col-resize; background:#ccc; }
+#sidebar { width:30%; padding:10px; overflow:auto; border-left:2px solid #333; }
+
+.alert {
+    margin-bottom:12px;
+    padding:8px;
+    border-bottom:1px solid #ccc;
+    font-size:12px;
+    line-height:1.3;
+}
+
+.compact label { display:block; margin-bottom:4px; }
+
+#sidebar label {
+    display:inline-block;
+    margin-right:8px;
+}
+
+#updateTimer {
+    position: fixed;
+    bottom: 15px;
+    left: 15px;
+    background: white;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-family: monospace;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    line-height: 1.6;
+}
+
+#updateTimer .weather-update,
+#updateTimer .radar-update {
+    margin: 0;
+}
+
+#updateTimer .radar-update.inactive {
+    color: #999;
+    text-decoration: line-through;
+}
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+</head>
+<body tabindex="0">
+
+<div id="map">
+</div>
+<div id="updateTimer">
+  <div class="weather-update">Weather: <span id="weatherCountdown">1:00</span></div>
+  <div class="radar-update">Radar: <span id="radarCountdown">5:00</span></div>
+</div>
+<div id="resizer"></div>
+
+<div id="sidebar">
+
+<h3>Filters</h3>
+
+Severity:
+<select id="severityFilter" onchange="applyFilters()">
+<option value="">All</option>
+<option>Extreme</option>
+<option>Severe</option>
+<option>Moderate</option>
+<option>Minor</option>
+</select>
+
+<label>
+<input type="checkbox" id="expiredOnlyToggle" onchange="applyFilters()">
+Expired only
+</label>
+
+<hr>
+
+<b>Search Fields</b>
+<label><input type="checkbox" id="field_event" checked> Event</label>
+<label><input type="checkbox" id="field_headline" checked> Headline</label>
+<label><input type="checkbox" id="field_description" checked> Description</label>
+<label><input type="checkbox" id="field_area" checked> Area</label>
+<label><input type="checkbox" id="field_id"> Alert ID</label>
+
+Search: <input id="searchFilter" placeholder="Use & | ! ( )">
+
+<button onclick="applyFilters()">Apply</button>
+<button onclick="clearSearch()">Clear</button>
+
+<hr>
+
+<div class="compact">
+<b>Display</b>
+
+<label><input type="checkbox" id="blinkToggle" checked onchange="redrawMap()"> Blink recent alerts</label>
+<label><input type="checkbox" id="showEventsToggle" onchange="redrawMap()"> Show Event Names</label>
+
+<label>Map Opacity <input type="range" id="mapOpacity" min="0" max="100" value="100" oninput="updateMapOpacity()"></label>
+
+<label>County Opacity <input type="range" id="countyOpacity" min="0" max="100" value="70" oninput="updateCountyOpacity()"> </label>
+
+<label><input type="checkbox" id="radarToggle" onchange="toggleRadar()"> Radar</label>
+
+<label>Radar Opacity <input type="range" id="radarOpacity" min="0" max="100" value="60" oninput="updateRadarOpacity()"> </label>
+
+<label>Map Type:
+<select id="mapTypeSelector" onchange="switchMapType()">
+<option value="Street" selected>Street</option>
+<option value="Topological">Topological</option>
+</select>
+</label>
+
+</div>
+
+<hr>
+
+<div id="content">Click a county</div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+const ALERTS_URL = "https://api.weather.gov/alerts/active";
+
+const map = L.map('map', {
+    wheelPxPerZoomLevel: 150,
+    keyboard: false
+}).setView([37.8,-96],4);
+
+const baseLayers = {
+    'Street': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }),
+    'Topological': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; OpenTopoMap (CC-BY-SA)',
+        subdomains: 'abc',
+        maxZoom: 17
+    })
+};
+
+let currentBaseLayer = baseLayers['Street'].addTo(map);
+
+// Explicitly disable keyboard handling
+if (map.keyboard) {
+    map.keyboard.disable();
+}
+
+let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
+let radarLayer = null;
+let countyOpacityValue = 0.7;
+let stateLayer;
+
+// Timer tracking
+let nextWeatherUpdate = Date.now();
+let nextRadarUpdate = Date.now();
+const WEATHER_UPDATE_INTERVAL = 60000; // 60 seconds
+const RADAR_UPDATE_INTERVAL = 300000; // 300 seconds
+
+const stateAbbreviations = {
+    "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
+    "11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA",
+    "20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA","26":"MI","27":"MN",
+    "28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH","34":"NJ","35":"NM",
+    "36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI",
+    "45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA",
+    "54":"WV","55":"WI","56":"WY"
+};
+
+let filters = {
+    severity:"",
+    search:"",
+    fields:["event","headline","description","areaDesc"],
+    expiredOnly:false
+};
+
+// ===== DRAG RESIZE =====
+const resizer = document.getElementById('resizer');
+let isResizing = false;
+
+resizer.addEventListener('mousedown', () => { isResizing = true; });
+
+document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+
+    const totalWidth = window.innerWidth;
+    const sidebarWidth = totalWidth - e.clientX;
+
+    const min = 200;
+    const max = totalWidth * 0.6;
+
+    if (sidebarWidth < min || sidebarWidth > max) return;
+
+    document.getElementById('sidebar').style.width = sidebarWidth + 'px';
+    document.getElementById('map').style.width = (totalWidth - sidebarWidth - 6) + 'px';
+
+    // NEW: fix map rendering while resizing
+    map.invalidateSize();
+});
+
+document.addEventListener('mouseup', () => { isResizing = false; });
+
+// ===== TIMER =====
+setInterval(()=>{
+    document.querySelectorAll(".timer").forEach(el=>{
+        const exp = new Date(el.dataset.exp);
+        let diff = (exp - new Date())/1000;
+
+        if(diff <= 0){
+            el.innerText = "Expired";
+            return;
+        }
+
+        const h = Math.floor(diff/3600);
+        const m = Math.floor((diff%3600)/60);
+        const s = Math.floor(diff%60);
+
+        el.innerText =
+            String(h).padStart(2,'0') + ":" +
+            String(m).padStart(2,'0') + ":" +
+            String(s).padStart(2,'0');
+    });
+},1000);
+
+// ===== UTIL =====
+function sameToFips(code){ return code.substring(1); }
+function getFips(f){ return (f.id || (f.properties.STATE + f.properties.COUNTY)).padStart(5,"0"); }
+
+function hashAlertId(str){
+    let hash=0;
+    for(let i=0;i<str.length;i++){
+        hash=(hash<<5)-hash+str.charCodeAt(i);
+        hash|=0;
+    }
+    return (hash>>>0).toString(16);
+}
+
+function isExpired(a){
+    return a.expires && new Date(a.expires)<new Date();
+}
+
+// ===== SEARCH =====
+function evaluateSearch(query,text){
+    if(!query) return true;
+
+    const tokens=query.replace(/\(/g," ( ").replace(/\)/g," ) ")
+        .toLowerCase().split(/\s+/).filter(t=>t.length);
+
+    let i=0;
+
+    function expr(){
+        let v=term();
+        while(tokens[i]==="|"){ i++; v=v||term(); }
+        return v;
+    }
+
+    function term(){
+        let v=factor();
+        while(tokens[i]==="&"){ i++; v=v&&factor(); }
+        return v;
+    }
+
+    function factor(){
+        let t=tokens[i];
+        if(t==="!"){ i++; return !factor(); }
+        if(t==="("){ i++; let v=expr(); i++; return v; }
+        i++; return text.includes(t);
+    }
+
+    try{return expr();}catch{return false;}
+}
+
+function buildText(a){
+    let p=[];
+    if(filters.fields.includes("event")) p.push(a.event);
+    if(filters.fields.includes("headline")) p.push(a.headline);
+    if(filters.fields.includes("description")) p.push(a.description);
+    if(filters.fields.includes("areaDesc")) p.push(a.areaDesc);
+    if(filters.fields.includes("id")) p.push(hashAlertId(a.id));
+    return p.join(" ").toLowerCase();
+}
+
+function getFiltered(fips){
+    return (rawData[fips]||[]).filter(a=>{
+        if(filters.severity && a.severity!==filters.severity) return false;
+        if(filters.expiredOnly && !isExpired(a)) return false;
+        if(filters.search && !evaluateSearch(filters.search,buildText(a))) return false;
+        return true;
+    });
+}
+
+// ===== DATA =====
+function processAlerts(data){
+    const out={};
+    data.features.forEach(alert=>{
+        const p=alert.properties;
+        const codes=p.geocode?.SAME||[];
+
+        const obj={
+            id:alert.id,
+            event:p.event||"",
+            headline:p.headline||"",
+            description:p.description||"",
+            areaDesc:p.areaDesc||"",
+            severity:p.severity||"",
+            expires:p.expires,
+            sent:p.sent
+        };
+
+        codes.forEach(code=>{
+            const fips=sameToFips(code);
+            if(!out[fips]) out[fips]=[];
+            out[fips].push(obj);
+        });
+    });
+    return out;
+}
+
+async function refresh(){
+    nextWeatherUpdate = Date.now() + WEATHER_UPDATE_INTERVAL;
+    const r=await fetch(ALERTS_URL);
+    const d=await r.json();
+    rawData=processAlerts(d);
+    redrawMap();
+}
+
+// ===== MAP =====
+function getPriorityCategory(event) {
+    event = (event || "").toLowerCase();
+    if (event.includes("tornado") && event.includes("warning")) return "tornado-warning";
+    if (event.includes("warning")) return "warning";
+    if (event.includes("watch")) return "watch";
+    if (event.includes("advisory")) return "advisory";
+    if (event.includes("statement")) return "statement";
+    return "other";
+}
+
+function getColor(category) {
+    switch(category) {
+        case "tornado-warning": return "#ffffff";
+        case "warning": return "#ff0000";
+        case "watch": return "#ffff00";
+        case "advisory": return "#00aa00";
+        case "statement": return "#0000ff";
+        default: return "#800080";
+    }
+}
+
+function getFeatureStyle(f){
+    const fips = getFips(f);
+    const filtered = getFiltered(fips);
+    if(!filtered.length){
+        if(rawData[fips] && rawData[fips].length > 0){
+            const allAlerts = rawData[fips];
+            const categories = allAlerts.map(a => getPriorityCategory(a.event));
+            const priorityOrder = ["warning", "watch", "advisory", "statement", "other"];
+            const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
+            return {
+                fillColor:getColor(highestCategory),
+                fillOpacity:countyOpacityValue * 0.3,
+                color:"#000",
+                weight:0.4
+            };
+        } else {
+            return {fillOpacity:0.05,color:"#000",weight:0.4};
+        }
+    }
+    const categories = filtered.map(a => getPriorityCategory(a.event));
+    const priorityOrder = ["warning", "watch", "advisory", "statement", "other"];
+    const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
+    return {
+        fillColor:getColor(highestCategory),
+        fillOpacity:countyOpacityValue,
+        color:"#000",
+        weight:0.4
+    };
+}
+
+function redrawMap(){
+
+    Object.values(blinkIntervals).forEach(clearInterval);
+    blinkIntervals={};
+
+    if(geoLayer) map.removeLayer(geoLayer);
+
+    geoLayer=L.geoJson(geojsonData,{
+        style:getFeatureStyle,
+        onEachFeature:(f,layer)=>{
+            const fips=getFips(f);
+            const alerts=getFiltered(fips);
+            const name=f.properties.NAME;
+
+            let tooltip=name+" ("+alerts.length+")";
+
+            if(showEventsToggle.checked && alerts.length){
+                const events=[...new Set(alerts.map(a=>a.event))];
+                const colored=events.map(e =>
+                    `<span style="color:${getColor(e)};font-weight:bold;">●</span> ${e}`
+                );
+                tooltip+="<br>"+colored.join("<br>");
+            }
+
+            layer.bindTooltip(tooltip);
+            layer.on("click",()=>showSidebar(fips,name,f));
+            layer.on("mouseover",()=>{
+                layer.setStyle({ fillColor: "#999", fillOpacity: countyOpacityValue });
+            });
+            layer.on("mouseout",()=>{
+                layer.setStyle(getFeatureStyle(f));
+            });
+
+            if(blinkToggle.checked &&
+               alerts.some(a=>((new Date()-new Date(a.sent))/1000)<3600)){
+                let visible=true;
+                blinkIntervals[fips]=setInterval(()=>{
+                    visible=!visible;
+                    layer.setStyle({
+                        fillOpacity: visible
+                            ? countyOpacityValue
+                            : Math.max(0.1,countyOpacityValue*0.4)
+                    });
+                },800);
+            }
+        }
+    }).addTo(map);
+
+    if(stateLayer) stateLayer.bringToFront();
+}
+
+// ===== STATE BORDER SCALING =====
+function updateStateBorderWeight(){
+    if(!stateLayer) return;
+    const zoom = map.getZoom();
+    const weight = Math.max(1.5, zoom * 0.5);
+    stateLayer.setStyle({ weight: weight });
+}
+
+map.on("zoomend", updateStateBorderWeight);
+
+// ===== SIDEBAR =====
+function showSidebar(fips,name,f){
+    const alerts=getFiltered(fips);
+    const stateFips = String(f.properties.STATE).padStart(2,'0');
+    const countyFips = String(f.properties.COUNTY).padStart(3,'0');
+    const sameCode = stateFips + countyFips;
+    const stateAbbr = stateAbbreviations[stateFips] || stateFips;
+    let html = `<h3>${name}, ${stateAbbr} (${sameCode})</h3>`;
+
+    if(!alerts.length){
+        content.innerHTML=html+"No alerts";
+        return;
+    }
+
+    alerts.sort((a,b)=> new Date(a.expires) - new Date(b.expires));
+
+    alerts.forEach(a=>{
+        html+=`
+        <div class="alert">
+        <b>${a.event}</b><br>
+        <i>${a.severity}</i><br><br>
+
+        <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
+        <b>Expires:</b> ${a.expires ? new Date(a.expires).toLocaleString() : "N/A"}<br>
+
+        <b>Expires in:</b>
+        <span class="timer" data-exp="${a.expires}"></span><br><br>
+
+        <b>Description:</b><br>
+        ${a.description || "No description provided."}<br><br>
+
+        <b>ID:</b> ${hashAlertId(a.id)}
+        </div>`;
+    });
+
+    content.innerHTML=html;
+}
+
+// ===== FILTERS =====
+function applyFilters(){
+    filters.severity=severityFilter.value;
+    filters.search=searchFilter.value.toLowerCase();
+    filters.expiredOnly=expiredOnlyToggle.checked;
+
+    filters.fields=[];
+    if(field_event.checked) filters.fields.push("event");
+    if(field_headline.checked) filters.fields.push("headline");
+    if(field_description.checked) filters.fields.push("description");
+    if(field_area.checked) filters.fields.push("areaDesc");
+    if(field_id.checked) filters.fields.push("id");
+
+    redrawMap();
+}
+
+function clearSearch(){
+    searchFilter.value="";
+    filters.search="";
+    redrawMap();
+}
+
+// ===== RADAR =====
+function createRadarLayer(){
+    return L.tileLayer(
+        "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png?_t="+Date.now(),
+        {opacity: radarOpacity.value/100}
+    );
+}
+
+function toggleRadar(){
+    if(radarToggle.checked){
+        reloadRadar();
+    } else if(radarLayer){
+        map.removeLayer(radarLayer);
+    }
+}
+
+function reloadRadar(){
+    nextRadarUpdate = Date.now() + RADAR_UPDATE_INTERVAL;
+    if(radarLayer) map.removeLayer(radarLayer);
+    radarLayer=createRadarLayer();
+    if(radarToggle.checked) radarLayer.addTo(map);
+}
+
+function updateRadarOpacity(){
+    if(radarLayer) radarLayer.setOpacity(radarOpacity.value/100);
+}
+
+function updateMapOpacity(){
+    const val=document.getElementById("mapOpacity").value;
+    const opacity=val/100;
+    if(currentBaseLayer && typeof currentBaseLayer.setOpacity === 'function'){
+        currentBaseLayer.setOpacity(opacity);
+    }
+}
+
+function updateCountyOpacity(){
+    const val=document.getElementById("countyOpacity").value;
+    countyOpacityValue=val/100;
+    redrawMap();
+}
+
+function switchMapType(){
+    const mapType = document.getElementById("mapTypeSelector").value;
+    map.removeLayer(currentBaseLayer);
+    currentBaseLayer = baseLayers[mapType].addTo(map);
+    updateMapOpacity();
+    if(radarLayer) radarLayer.bringToFront();
+    if(stateLayer) stateLayer.bringToFront();
+}
+
+// ===== INIT =====
+fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
+.then(r=>r.json())
+.then(g=>{
+    geojsonData=g;
+    refresh();
+    setInterval(refresh,60000);
+});
+
+fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
+.then(r=>r.json())
+.then(states=>{
+    stateLayer = L.geoJson(states, {
+        style: { color:"#000", weight:2.5, fill:false },
+        interactive:false
+    }).addTo(map);
+
+    updateStateBorderWeight();
+});
+
+setInterval(()=>{
+    if(radarToggle.checked) reloadRadar();
+},300000);
+
+// Prevent map keyboard shortcuts when typing in sidebar
+// Allow actual text input fields to receive characters.
+document.getElementById('sidebar').addEventListener('keydown', (e) => {
+    if (isFormControl(e.target)) return;
+    if (['r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}, true);
+
+document.getElementById('sidebar').addEventListener('keyup', (e) => {
+    if (isFormControl(e.target)) return;
+    if (['r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}, true);
+
+// ===== UPDATE TIMER =====
+setInterval(()=>{
+    const now = Date.now();
+    
+    // Calculate weather update countdown
+    let weatherDiff = Math.max(0, Math.ceil((nextWeatherUpdate - now) / 1000));
+    const weatherMins = Math.floor(weatherDiff / 60);
+    const weatherSecs = weatherDiff % 60;
+    document.getElementById('weatherCountdown').textContent = 
+        weatherMins + ':' + String(weatherSecs).padStart(2, '0');
+    
+    // Calculate radar update countdown
+    const radarUpdateElem = document.querySelector('#updateTimer .radar-update');
+    const radarCountdownElem = document.getElementById('radarCountdown');
+    
+    if(radarToggle.checked){
+        radarUpdateElem.classList.remove('inactive');
+        let radarDiff = Math.max(0, Math.ceil((nextRadarUpdate - now) / 1000));
+        const radarMins = Math.floor(radarDiff / 60);
+        const radarSecs = radarDiff % 60;
+        radarCountdownElem.textContent = 
+            radarMins + ':' + String(radarSecs).padStart(2, '0');
+    } else {
+        radarUpdateElem.classList.add('inactive');
+        radarCountdownElem.textContent = '--:--';
+    }
+}, 1000);
+
+// ===== RIGHT-CLICK PAN =====
+const mapElement = document.getElementById('map');
+
+// Check if map element is capturing keyboard events
+mapElement.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // Prevent bubbling
+}, true);
+
+mapElement.addEventListener('keypress', (e) => {
+    e.stopPropagation(); // Prevent bubbling
+}, true);
+
+mapElement.addEventListener('mousedown', (e) => {
+    if (e.button !== 2) return; // Only right mouse button
+    e.preventDefault();
+    
+    const mapRect = mapElement.getBoundingClientRect();
+    const mapPoint = L.point(e.clientX - mapRect.left, e.clientY - mapRect.top);
+    const clickedLatLng = map.containerPointToLatLng(mapPoint);
+    map.panTo(clickedLatLng, { animate: true });
+});
+
+// Ensure document has focus for keyboard events
+mapElement.addEventListener('click', () => {
+    mapElement.blur(); // Remove focus from map
+    document.body.focus(); // Give focus to body
+});
+
+// Disable context menu on map
+mapElement.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+});
+
+// ===== KEYBOARD ZOOM CONTROLS =====
+let zoomInInterval = null;
+let zoomOutInterval = null;
+
+function isFormControl(element) {
+    if (!element) return false;
+    const tag = element.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || element.isContentEditable;
+}
+
+function shouldIgnoreShortcutEvent(e) {
+    const target = e.target;
+    return isFormControl(target) || (target.closest && target.closest('#sidebar'));
+}
+
+document.addEventListener('keydown', (e) => {
+    if (shouldIgnoreShortcutEvent(e)) return;
+
+    if (e.key === 'r' || e.key === 'R') {
+        // Toggle radar on/off
+        radarToggle.checked = !radarToggle.checked;
+        toggleRadar();
+        return;
+    } else if (e.key === 'm' || e.key === 'M') {
+        // Toggle between Street and Topological maps
+        const currentType = mapTypeSelector.value;
+        const newType = currentType === 'Street' ? 'Topological' : 'Street';
+        mapTypeSelector.value = newType;
+        switchMapType();
+        return;
+    } else if (e.key === 'i' && !zoomInInterval) {
+        // Zoom immediately on key press
+        const currentZoom = map.getZoom();
+        const maxZoom = map.getMaxZoom();
+        if (currentZoom < maxZoom) {
+            map.setZoom(currentZoom + 1.0);
+        }
+        
+        // Then set up interval for continuous zooming
+        zoomInInterval = setInterval(() => {
+            const currentZoom = map.getZoom();
+            const maxZoom = map.getMaxZoom();
+            if (currentZoom < maxZoom) {
+                map.setZoom(currentZoom + 1.0);
+            }
+        }, 100);
+    } else if (e.key === 'o' && !zoomOutInterval) {
+        // Zoom immediately on key press
+        const currentZoom = map.getZoom();
+        const minZoom = map.getMinZoom();
+        if (currentZoom > minZoom) {
+            map.setZoom(currentZoom - 1.0);
+        }
+        
+        // Then set up interval for continuous zooming
+        zoomOutInterval = setInterval(() => {
+            const currentZoom = map.getZoom();
+            const minZoom = map.getMinZoom();
+            if (currentZoom > minZoom) {
+                map.setZoom(currentZoom - 1.0);
+            }
+        }, 100);
+    }
+}, true); // Use capture
+
+document.addEventListener('keyup', (e) => {
+    if (shouldIgnoreShortcutEvent(e)) return;
+
+    if (e.key === 'i' && zoomInInterval) {
+        clearInterval(zoomInInterval);
+        zoomInInterval = null;
+    } else if (e.key === 'o' && zoomOutInterval) {
+        clearInterval(zoomOutInterval);
+        zoomOutInterval = null;
+    }
+}, true); // Use capture
+</script>
+
+</body>
+</html>
