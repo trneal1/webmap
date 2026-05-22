@@ -108,6 +108,7 @@ body.sidebar-closed #openSidebar {
     align-items:flex-start;
     justify-content:center;
     padding-top:8vh;
+    pointer-events:none;
 }
 
 #eventFilterOverlay.open {
@@ -115,6 +116,10 @@ body.sidebar-closed #openSidebar {
 }
 
 #eventFilterDialog {
+    position:absolute;
+    top:8vh;
+    left:50%;
+    transform:translateX(-50%);
     width:min(520px, calc(100vw - 32px));
     max-height:82vh;
     background:#fff;
@@ -123,6 +128,7 @@ body.sidebar-closed #openSidebar {
     box-shadow:0 8px 24px rgba(0,0,0,0.3);
     display:flex;
     flex-direction:column;
+    pointer-events:auto;
 }
 
 #eventFilterHeader {
@@ -132,6 +138,8 @@ body.sidebar-closed #openSidebar {
     gap:12px;
     padding:10px 12px;
     border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
 }
 
 #eventFilterHeader h3 {
@@ -180,15 +188,52 @@ body.sidebar-closed #openSidebar {
     font-size:13px;
 }
 
+#eventFilterList .event-row-main {
+    display:flex;
+    align-items:center;
+    min-width:0;
+    gap:8px;
+}
+
 #eventFilterList .event-title {
     display:flex;
     align-items:center;
     gap:8px;
+    min-width:0;
+}
+
+#eventFilterList .event-title span {
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+#eventFilterList .event-row-tools {
+    display:flex;
+    align-items:center;
+    flex:0 0 auto;
+    gap:6px;
 }
 
 #eventFilterList .event-count {
     font-family:monospace;
     color:#555;
+    min-width:3ch;
+    text-align:right;
+}
+
+#eventFilterList .event-cycle {
+    width:24px;
+    height:24px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    line-height:1;
+    padding:0;
+}
+
+#eventFilterList .event-cycle:hover {
+    background:#eee;
 }
 </style>
 
@@ -318,10 +363,12 @@ if (map.keyboard) {
 }
 
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
+let countyFeatureByFips = {};
 let radarLayer = null;
 let countyOpacityValue = 0.7;
 let countyColorizationEnabled = true;
 let stateLayer;
+let eventFocusLayer = null;
 
 // Timer tracking
 let nextWeatherUpdate = Date.now();
@@ -349,6 +396,11 @@ let filters = {
 };
 
 let eventTitleFilterSnapshot={ mode:"all", titles:[] };
+let eventTitleCyclePositions={};
+let focusedEventTitle="";
+let focusedEventCountyFips="";
+let isDraggingEventFilter=false;
+let eventFilterDragOffset={ x:0, y:0 };
 
 // ===== DRAG RESIZE =====
 const resizer = document.getElementById('resizer');
@@ -375,6 +427,61 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mouseup', () => { isResizing = false; });
+
+// ===== EVENT FILTER DRAG =====
+const eventFilterDialog=document.getElementById('eventFilterDialog');
+const eventFilterHeader=document.getElementById('eventFilterHeader');
+
+function clampEventFilterDialog(){
+    const rect=eventFilterDialog.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    eventFilterDialog.style.left=left+"px";
+    eventFilterDialog.style.top=top+"px";
+    eventFilterDialog.style.transform="none";
+}
+
+eventFilterHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=eventFilterDialog.getBoundingClientRect();
+    eventFilterDialog.style.left=rect.left+"px";
+    eventFilterDialog.style.top=rect.top+"px";
+    eventFilterDialog.style.transform="none";
+
+    isDraggingEventFilter=true;
+    eventFilterDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingEventFilter) return;
+
+    const rect=eventFilterDialog.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-eventFilterDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-eventFilterDragOffset.y,0),maxTop);
+
+    eventFilterDialog.style.left=left+"px";
+    eventFilterDialog.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingEventFilter=false;
+});
+
+window.addEventListener('resize',()=>{
+    if(document.getElementById('eventFilterOverlay').classList.contains('open')){
+        clampEventFilterDialog();
+    }
+});
 
 // ===== TIMER =====
 setInterval(()=>{
@@ -488,13 +595,25 @@ function renderEventFilterList(){
         const checked=filters.eventTitleMode === "all" || filters.eventTitles.includes(title);
         return `
         <label>
-            <span class="event-title">
-                <input type="checkbox" value="${escapeHtml(title)}" ${checked ? "checked" : ""} onchange="updateEventTitleFilter()">
-                <span>${escapeHtml(title)}</span>
+            <span class="event-row-main">
+                <button class="event-cycle" type="button" data-title="${escapeHtml(title)}" data-direction="-1" aria-label="Previous county for ${escapeHtml(title)}" title="Previous county">&#9664;</button>
+                <span class="event-title">
+                    <input type="checkbox" value="${escapeHtml(title)}" ${checked ? "checked" : ""} onchange="updateEventTitleFilter()">
+                    <span>${escapeHtml(title)}</span>
+                </span>
             </span>
-            <span class="event-count">${count}</span>
+            <span class="event-row-tools">
+                <span class="event-count">${count}</span>
+                <button class="event-cycle" type="button" data-title="${escapeHtml(title)}" data-direction="1" aria-label="Next county for ${escapeHtml(title)}" title="Next county">&#9654;</button>
+            </span>
         </label>`;
     }).join("");
+
+    list.querySelectorAll('.event-cycle').forEach(button=>{
+        button.addEventListener('click',()=>{
+            cycleEventTitleCounty(button.dataset.title, Number(button.dataset.direction));
+        });
+    });
 }
 
 function escapeHtml(value){
@@ -543,6 +662,50 @@ function openEventFilterPopup(){
 
 function closeEventFilterPopup(){
     document.getElementById('eventFilterOverlay').classList.remove('open');
+    focusedEventTitle="";
+    focusedEventCountyFips="";
+    clearFocusedEventCountyHighlight();
+}
+
+function getEventTitleCounties(title){
+    return Object.entries(rawData)
+        .filter(([,alerts])=>alerts.some(a=>(a.event || "Untitled") === title))
+        .map(([fips])=>{
+            const feature=countyFeatureByFips[fips];
+            if(!feature) return null;
+            const stateFips=String(feature.properties.STATE).padStart(2,'0');
+            return {
+                fips,
+                feature,
+                name:feature.properties.NAME || fips,
+                state:stateAbbreviations[stateFips] || stateFips
+            };
+        })
+        .filter(Boolean)
+        .sort((a,b)=>
+            a.state.localeCompare(b.state) ||
+            a.name.localeCompare(b.name) ||
+            a.fips.localeCompare(b.fips)
+        );
+}
+
+function cycleEventTitleCounty(title,direction){
+    const counties=getEventTitleCounties(title);
+    if(!counties.length) return;
+
+    const current=eventTitleCyclePositions[title] ?? (direction > 0 ? -1 : 0);
+    const next=(current + direction + counties.length) % counties.length;
+    eventTitleCyclePositions[title]=next;
+
+    const county=counties[next];
+    focusedEventTitle=title;
+    focusedEventCountyFips=county.fips;
+    updateFocusedEventCountyHighlight();
+
+    const bounds=L.geoJson(county.feature).getBounds();
+    if(bounds.isValid()){
+        map.fitBounds(bounds,{ padding:[48,48], maxZoom:8, animate:true });
+    }
 }
 
 // ===== DATA =====
@@ -577,6 +740,7 @@ async function refresh(){
     const r=await fetch(ALERTS_URL);
     const d=await r.json();
     rawData=processAlerts(d);
+    eventTitleCyclePositions={};
     if(document.getElementById('eventFilterOverlay').classList.contains('open')){
         renderEventFilterList();
     }
@@ -617,6 +781,79 @@ function getAlertStyle(alerts, fillOpacity){
     };
 }
 
+function ensureEventFocusPattern(){
+    const svg=map.getPanes().overlayPane.querySelector('svg');
+    if(!svg || svg.querySelector('#eventFocusHatch')) return;
+
+    const ns='http://www.w3.org/2000/svg';
+    const defs=document.createElementNS(ns,'defs');
+    const pattern=document.createElementNS(ns,'pattern');
+    pattern.setAttribute('id','eventFocusHatch');
+    pattern.setAttribute('patternUnits','userSpaceOnUse');
+    pattern.setAttribute('width','10');
+    pattern.setAttribute('height','10');
+    pattern.setAttribute('patternTransform','rotate(45)');
+
+    const baseLine=document.createElementNS(ns,'line');
+    baseLine.setAttribute('x1','0');
+    baseLine.setAttribute('y1','0');
+    baseLine.setAttribute('x2','0');
+    baseLine.setAttribute('y2','10');
+    baseLine.setAttribute('stroke','#fff');
+    baseLine.setAttribute('stroke-width','5');
+    baseLine.setAttribute('stroke-opacity','0.9');
+
+    const topLine=document.createElementNS(ns,'line');
+    topLine.setAttribute('x1','0');
+    topLine.setAttribute('y1','0');
+    topLine.setAttribute('x2','0');
+    topLine.setAttribute('y2','10');
+    topLine.setAttribute('stroke','#111');
+    topLine.setAttribute('stroke-width','2');
+    topLine.setAttribute('stroke-opacity','0.9');
+
+    pattern.appendChild(baseLine);
+    pattern.appendChild(topLine);
+    defs.appendChild(pattern);
+    svg.insertBefore(defs,svg.firstChild);
+}
+
+function clearFocusedEventCountyHighlight(){
+    if(eventFocusLayer){
+        map.removeLayer(eventFocusLayer);
+        eventFocusLayer=null;
+    }
+}
+
+function updateFocusedEventCountyHighlight(){
+    clearFocusedEventCountyHighlight();
+    if(!focusedEventTitle || !focusedEventCountyFips) return;
+
+    const feature=countyFeatureByFips[focusedEventCountyFips];
+    const alerts=rawData[focusedEventCountyFips] || [];
+    const stillImpacted=feature && alerts.some(a=>(a.event || "Untitled") === focusedEventTitle);
+    if(!stillImpacted){
+        focusedEventTitle="";
+        focusedEventCountyFips="";
+        return;
+    }
+
+    ensureEventFocusPattern();
+    eventFocusLayer=L.geoJson(feature,{
+        interactive:false,
+        style:{
+            fill:true,
+            fillColor:'url(#eventFocusHatch)',
+            fillOpacity:1,
+            color:'#111',
+            weight:2.5,
+            opacity:1
+        }
+    }).addTo(map);
+    ensureEventFocusPattern();
+    eventFocusLayer.bringToFront();
+}
+
 function getFeatureStyle(f){
     if(!countyColorizationEnabled){
         return {fill:false,color:"#000",weight:0.4};
@@ -647,6 +884,7 @@ function redrawMap(){
     blinkIntervals={};
 
     if(geoLayer) map.removeLayer(geoLayer);
+    clearFocusedEventCountyHighlight();
 
     geoLayer=L.geoJson(geojsonData,{
         style:getFeatureStyle,
@@ -693,6 +931,7 @@ function redrawMap(){
         }
     }).addTo(map);
 
+    updateFocusedEventCountyHighlight();
     if(stateLayer) stateLayer.bringToFront();
 }
 
@@ -839,6 +1078,10 @@ fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties
 .then(r=>r.json())
 .then(g=>{
     geojsonData=g;
+    countyFeatureByFips={};
+    geojsonData.features.forEach(feature=>{
+        countyFeatureByFips[getFips(feature)]=feature;
+    });
     refresh();
     setInterval(refresh,60000);
 });
