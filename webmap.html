@@ -52,7 +52,7 @@ body.sidebar-closed #resizer {
 }
 
 body.sidebar-closed #map {
-    width:100%;
+    width:100vw !important;
 }
 
 body.sidebar-closed #openSidebar {
@@ -500,14 +500,21 @@ function updateStateBorderWeight(){
 map.on("zoomend", updateStateBorderWeight);
 
 // ===== SIDEBAR =====
+function resizeMapAfterSidebarChange(){
+    requestAnimationFrame(() => {
+        map.invalidateSize();
+        setTimeout(() => map.invalidateSize(), 100);
+    });
+}
+
 function closeSidebar(){
     document.body.classList.add('sidebar-closed');
-    map.invalidateSize();
+    resizeMapAfterSidebarChange();
 }
 
 function openSidebar(){
     document.body.classList.remove('sidebar-closed');
-    map.invalidateSize();
+    resizeMapAfterSidebarChange();
 }
 
 function showSidebar(fips,name,f){
