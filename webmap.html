@@ -1218,6 +1218,8 @@ mapElement.addEventListener('contextmenu', (e) => {
 // ===== KEYBOARD ZOOM CONTROLS =====
 let zoomInInterval = null;
 let zoomOutInterval = null;
+const storedMapViewsKey = 'nwsDashboardStoredMapViews';
+let storedMapViews = loadStoredMapViews();
 
 function isFormControl(element) {
     if (!element) return false;
@@ -1230,8 +1232,53 @@ function shouldIgnoreShortcutEvent(e) {
     return isFormControl(target) || (target.closest && target.closest('#sidebar'));
 }
 
+function loadStoredMapViews() {
+    try {
+        return JSON.parse(localStorage.getItem(storedMapViewsKey)) || {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function saveStoredMapViews() {
+    localStorage.setItem(storedMapViewsKey, JSON.stringify(storedMapViews));
+}
+
+function getStoredViewDigit(e) {
+    const digitMatch = e.code?.match(/^(?:Digit|Numpad)([1-9])$/);
+    if (digitMatch) return digitMatch[1];
+    return /^[1-9]$/.test(e.key) ? e.key : '';
+}
+
+function storeMapView(slot) {
+    const center = map.getCenter();
+    storedMapViews[slot] = {
+        lat: center.lat,
+        lng: center.lng,
+        zoom: map.getZoom()
+    };
+    saveStoredMapViews();
+}
+
+function restoreMapView(slot) {
+    const view = storedMapViews[slot];
+    if (!view) return;
+    map.setView([view.lat, view.lng], view.zoom, { animate: true });
+}
+
 document.addEventListener('keydown', (e) => {
     if (shouldIgnoreShortcutEvent(e)) return;
+
+    const storedViewDigit = getStoredViewDigit(e);
+    if (storedViewDigit && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        if (e.shiftKey) {
+            restoreMapView(storedViewDigit);
+        } else if (!e.repeat) {
+            storeMapView(storedViewDigit);
+        }
+        return;
+    }
 
     if (e.key === 'Escape' && document.getElementById('eventFilterOverlay').classList.contains('open')) {
         closeEventFilterPopup();
