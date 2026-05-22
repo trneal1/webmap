@@ -320,6 +320,7 @@ if (map.keyboard) {
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
 let radarLayer = null;
 let countyOpacityValue = 0.7;
+let countyColorizationEnabled = true;
 let stateLayer;
 
 // Timer tracking
@@ -343,10 +344,11 @@ let filters = {
     search:"",
     fields:["event","headline","description","areaDesc"],
     expiredOnly:false,
+    eventTitleMode:"all",
     eventTitles:[]
 };
 
-let eventTitleFilterSnapshot=[];
+let eventTitleFilterSnapshot={ mode:"all", titles:[] };
 
 // ===== DRAG RESIZE =====
 const resizer = document.getElementById('resizer');
@@ -458,7 +460,7 @@ function getFiltered(fips){
     return (rawData[fips]||[]).filter(a=>{
         if(filters.severity && a.severity!==filters.severity) return false;
         if(filters.expiredOnly && !isExpired(a)) return false;
-        if(filters.eventTitles.length && !filters.eventTitles.includes(a.event)) return false;
+        if(filters.eventTitleMode === "selected" && !filters.eventTitles.includes(a.event)) return false;
         if(filters.search && !evaluateSearch(filters.search,buildText(a))) return false;
         return true;
     });
@@ -483,7 +485,7 @@ function renderEventFilterList(){
     }
 
     list.innerHTML=rows.map(([title,count])=>{
-        const checked=!filters.eventTitles.length || filters.eventTitles.includes(title);
+        const checked=filters.eventTitleMode === "all" || filters.eventTitles.includes(title);
         return `
         <label>
             <span class="event-title">
@@ -507,7 +509,8 @@ function escapeHtml(value){
 function updateEventTitleFilter(){
     const boxes=[...document.querySelectorAll('#eventFilterList input[type="checkbox"]')];
     const checked=boxes.filter(box=>box.checked).map(box=>box.value);
-    filters.eventTitles=checked.length===boxes.length ? [] : checked;
+    filters.eventTitleMode=checked.length===boxes.length ? "all" : "selected";
+    filters.eventTitles=filters.eventTitleMode === "all" ? [] : checked;
     redrawMap();
 }
 
@@ -522,15 +525,18 @@ function selectNoEventTitles(){
 }
 
 function clearEventTitles(){
-    const snapshot=new Set(eventTitleFilterSnapshot);
+    const snapshot=new Set(eventTitleFilterSnapshot.titles);
     document.querySelectorAll('#eventFilterList input[type="checkbox"]').forEach(box=>{
-        box.checked=!snapshot.size || snapshot.has(box.value);
+        box.checked=eventTitleFilterSnapshot.mode === "all" || snapshot.has(box.value);
     });
     updateEventTitleFilter();
 }
 
 function openEventFilterPopup(){
-    eventTitleFilterSnapshot=[...filters.eventTitles];
+    eventTitleFilterSnapshot={
+        mode:filters.eventTitleMode,
+        titles:[...filters.eventTitles]
+    };
     renderEventFilterList();
     document.getElementById('eventFilterOverlay').classList.add('open');
 }
@@ -599,34 +605,40 @@ function getColor(category) {
     }
 }
 
-function getFeatureStyle(f){
-    const fips = getFips(f);
-    const filtered = getFiltered(fips);
-    if(!filtered.length){
-        if(rawData[fips] && rawData[fips].length > 0){
-            const allAlerts = rawData[fips];
-            const categories = allAlerts.map(a => getPriorityCategory(a.event));
-            const priorityOrder = ["tornado-warning", "warning", "watch", "advisory", "statement", "other"];
-            const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
-            return {
-                fillColor:getColor(highestCategory),
-                fillOpacity:countyOpacityValue * 0.3,
-                color:"#000",
-                weight:0.4
-            };
-        } else {
-            return {fillOpacity:0.05,color:"#000",weight:0.4};
-        }
-    }
-    const categories = filtered.map(a => getPriorityCategory(a.event));
+function getAlertStyle(alerts, fillOpacity){
+    const categories = alerts.map(a => getPriorityCategory(a.event));
     const priorityOrder = ["tornado-warning", "warning", "watch", "advisory", "statement", "other"];
     const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
     return {
         fillColor:getColor(highestCategory),
-        fillOpacity:countyOpacityValue,
+        fillOpacity,
         color:"#000",
         weight:0.4
     };
+}
+
+function getFeatureStyle(f){
+    if(!countyColorizationEnabled){
+        return {fill:false,color:"#000",weight:0.4};
+    }
+
+    const fips = getFips(f);
+    const filtered = getFiltered(fips);
+    if(!filtered.length){
+        if(filters.eventTitleMode === "selected" && !filters.eventTitles.length){
+            const allAlerts = rawData[fips]||[];
+            return allAlerts.length
+                ? getAlertStyle(allAlerts, countyOpacityValue * 0.3)
+                : {fill:false,color:"#000",weight:0.4};
+        }
+        if(rawData[fips] && rawData[fips].length > 0){
+            const allAlerts = rawData[fips];
+            return getAlertStyle(allAlerts, countyOpacityValue * 0.3);
+        } else {
+            return {fillOpacity:0.05,color:"#000",weight:0.4};
+        }
+    }
+    return getAlertStyle(filtered, countyOpacityValue);
 }
 
 function redrawMap(){
@@ -641,6 +653,7 @@ function redrawMap(){
         onEachFeature:(f,layer)=>{
             const fips=getFips(f);
             const alerts=rawData[fips]||[];
+            const filteredAlerts=getFiltered(fips);
             const name=f.properties.NAME;
 
             let tooltip=name+" ("+alerts.length+")";
@@ -656,6 +669,8 @@ function redrawMap(){
             layer.bindTooltip(tooltip);
             layer.on("click",()=>showSidebar(fips,name,f));
             layer.on("mouseover",()=>{
+                if(!countyColorizationEnabled) return;
+                if(!filteredAlerts.length) return;
                 layer.setStyle({ fillColor: "#999", fillOpacity: countyOpacityValue });
             });
             layer.on("mouseout",()=>{
@@ -663,7 +678,8 @@ function redrawMap(){
             });
 
             if(blinkToggle.checked &&
-               alerts.some(a=>((new Date()-new Date(a.sent))/1000)<3600)){
+               countyColorizationEnabled &&
+               filteredAlerts.some(a=>((new Date()-new Date(a.sent))/1000)<3600)){
                 let visible=true;
                 blinkIntervals[fips]=setInterval(()=>{
                     visible=!visible;
@@ -846,7 +862,7 @@ setInterval(()=>{
 // Allow actual text input fields to receive characters.
 document.getElementById('sidebar').addEventListener('keydown', (e) => {
     if (isFormControl(e.target)) return;
-    if (['r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
+    if (['c', 'C', 'r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
     }
@@ -854,7 +870,7 @@ document.getElementById('sidebar').addEventListener('keydown', (e) => {
 
 document.getElementById('sidebar').addEventListener('keyup', (e) => {
     if (isFormControl(e.target)) return;
-    if (['r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
+    if (['c', 'C', 'r', 'R', 'm', 'M', 'i', 'o'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
     }
@@ -946,6 +962,10 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === 't' || e.key === 'T') {
         openEventFilterPopup();
+        return;
+    } else if (e.key === 'c' || e.key === 'C') {
+        countyColorizationEnabled = !countyColorizationEnabled;
+        redrawMap();
         return;
     } else if (e.key === 'r' || e.key === 'R') {
         // Toggle radar on/off
