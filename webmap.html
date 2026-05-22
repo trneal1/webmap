@@ -7,6 +7,28 @@
 <style>
 body { margin:0; display:flex; font-family:Arial; }
 #map { width:70%; height:100vh; }
+#tornadoWarningBanner {
+    position:absolute;
+    top:14px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:1000;
+    display:none;
+    background:#fff;
+    border:2px solid #ff8c00;
+    border-radius:4px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25);
+    color:#111;
+    font-size:14px;
+    font-weight:bold;
+    padding:8px 12px;
+    text-transform:uppercase;
+    pointer-events:none;
+}
+
+#tornadoWarningBanner.active {
+    display:block;
+}
 #resizer { width:6px; cursor:col-resize; background:#ccc; }
 #sidebar { width:30%; padding:10px; overflow:auto; border-left:2px solid #333; }
 
@@ -242,6 +264,7 @@ body.sidebar-closed #openSidebar {
 <body tabindex="0">
 
 <div id="map">
+  <div id="tornadoWarningBanner" role="status" aria-live="polite">tornado warnings</div>
 </div>
 <div id="updateTimer">
   <div class="weather-update">Weather: <span id="weatherCountdown">1:00</span></div>
@@ -747,6 +770,17 @@ async function refresh(){
     redrawMap();
 }
 
+function updateTornadoWarningBanner(){
+    const banner=document.getElementById('tornadoWarningBanner');
+    if(!banner) return;
+
+    const hasTornadoWarning=Object.values(rawData).some(alerts =>
+        alerts.some(alert => getPriorityCategory(alert.event) === "tornado-warning")
+    );
+
+    banner.classList.toggle('active', hasTornadoWarning);
+}
+
 // ===== MAP =====
 function getPriorityCategory(event) {
     event = (event || "").toLowerCase();
@@ -879,6 +913,7 @@ function getFeatureStyle(f){
 }
 
 function redrawMap(){
+    updateTornadoWarningBanner();
 
     Object.values(blinkIntervals).forEach(clearInterval);
     blinkIntervals={};
