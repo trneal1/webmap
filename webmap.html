@@ -10,6 +10,55 @@ body { margin:0; display:flex; font-family:Arial; }
 #resizer { width:6px; cursor:col-resize; background:#ccc; }
 #sidebar { width:30%; padding:10px; overflow:auto; border-left:2px solid #333; }
 
+#sidebarHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+}
+
+#sidebarHeader h3 {
+    margin:0.5em 0;
+}
+
+#closeSidebar,
+#openSidebar {
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#closeSidebar {
+    width:28px;
+    height:28px;
+}
+
+#openSidebar {
+    position:fixed;
+    top:12px;
+    right:12px;
+    z-index:1000;
+    padding:8px 10px;
+    display:none;
+    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+}
+
+body.sidebar-closed #sidebar,
+body.sidebar-closed #resizer {
+    display:none;
+}
+
+body.sidebar-closed #map {
+    width:100%;
+}
+
+body.sidebar-closed #openSidebar {
+    display:block;
+}
+
 .alert {
     margin-bottom:12px;
     padding:8px;
@@ -63,9 +112,14 @@ body { margin:0; display:flex; font-family:Arial; }
 </div>
 <div id="resizer"></div>
 
+<button id="openSidebar" type="button" onclick="openSidebar()" title="Open sidebar">Filters</button>
+
 <div id="sidebar">
 
+<div id="sidebarHeader">
 <h3>Filters</h3>
+<button id="closeSidebar" type="button" onclick="closeSidebar()" aria-label="Close sidebar" title="Close sidebar">&times;</button>
+</div>
 
 Severity:
 <select id="severityFilter" onchange="applyFilters()">
@@ -345,7 +399,7 @@ function getPriorityCategory(event) {
 
 function getColor(category) {
     switch(category) {
-        case "tornado-warning": return "#ffffff";
+        case "tornado-warning": return "#ff8c00";
         case "warning": return "#ff0000";
         case "watch": return "#ffff00";
         case "advisory": return "#00aa00";
@@ -361,7 +415,7 @@ function getFeatureStyle(f){
         if(rawData[fips] && rawData[fips].length > 0){
             const allAlerts = rawData[fips];
             const categories = allAlerts.map(a => getPriorityCategory(a.event));
-            const priorityOrder = ["warning", "watch", "advisory", "statement", "other"];
+            const priorityOrder = ["tornado-warning", "warning", "watch", "advisory", "statement", "other"];
             const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
             return {
                 fillColor:getColor(highestCategory),
@@ -374,7 +428,7 @@ function getFeatureStyle(f){
         }
     }
     const categories = filtered.map(a => getPriorityCategory(a.event));
-    const priorityOrder = ["warning", "watch", "advisory", "statement", "other"];
+    const priorityOrder = ["tornado-warning", "warning", "watch", "advisory", "statement", "other"];
     const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
     return {
         fillColor:getColor(highestCategory),
@@ -446,7 +500,18 @@ function updateStateBorderWeight(){
 map.on("zoomend", updateStateBorderWeight);
 
 // ===== SIDEBAR =====
+function closeSidebar(){
+    document.body.classList.add('sidebar-closed');
+    map.invalidateSize();
+}
+
+function openSidebar(){
+    document.body.classList.remove('sidebar-closed');
+    map.invalidateSize();
+}
+
 function showSidebar(fips,name,f){
+    openSidebar();
     const alerts=getFiltered(fips);
     const stateFips = String(f.properties.STATE).padStart(2,'0');
     const countyFips = String(f.properties.COUNTY).padStart(3,'0');
