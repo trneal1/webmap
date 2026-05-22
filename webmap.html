@@ -98,6 +98,98 @@ body.sidebar-closed #openSidebar {
     color: #999;
     text-decoration: line-through;
 }
+
+#eventFilterOverlay {
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.25);
+    z-index:2000;
+    display:none;
+    align-items:flex-start;
+    justify-content:center;
+    padding-top:8vh;
+}
+
+#eventFilterOverlay.open {
+    display:flex;
+}
+
+#eventFilterDialog {
+    width:min(520px, calc(100vw - 32px));
+    max-height:82vh;
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    display:flex;
+    flex-direction:column;
+}
+
+#eventFilterHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:10px 12px;
+    border-bottom:1px solid #ccc;
+}
+
+#eventFilterHeader h3 {
+    margin:0;
+    font-size:16px;
+}
+
+#closeEventFilter {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#eventFilterActions {
+    display:flex;
+    gap:8px;
+    padding:10px 12px;
+    border-bottom:1px solid #ccc;
+}
+
+#eventFilterActions button {
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    padding:5px 9px;
+}
+
+#eventFilterList {
+    overflow:auto;
+    padding:8px 12px 12px;
+}
+
+#eventFilterList label {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:5px 0;
+    border-bottom:1px solid #eee;
+    font-size:13px;
+}
+
+#eventFilterList .event-title {
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+#eventFilterList .event-count {
+    font-family:monospace;
+    color:#555;
+}
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -110,6 +202,23 @@ body.sidebar-closed #openSidebar {
   <div class="weather-update">Weather: <span id="weatherCountdown">1:00</span></div>
   <div class="radar-update">Radar: <span id="radarCountdown">5:00</span></div>
 </div>
+
+<div id="eventFilterOverlay" role="dialog" aria-modal="true" aria-labelledby="eventFilterTitle">
+  <div id="eventFilterDialog">
+    <div id="eventFilterHeader">
+      <h3 id="eventFilterTitle">Event Titles</h3>
+      <button id="closeEventFilter" type="button" onclick="closeEventFilterPopup()" aria-label="Close event title filter" title="Close">&times;</button>
+    </div>
+    <div id="eventFilterActions">
+      <button type="button" onclick="selectAllEventTitles()">All</button>
+      <button type="button" onclick="selectNoEventTitles()">None</button>
+      <button type="button" onclick="clearEventTitles()">Reset</button>
+      <button type="button" onclick="closeEventFilterPopup()">Close</button>
+    </div>
+    <div id="eventFilterList"></div>
+  </div>
+</div>
+
 <div id="resizer"></div>
 
 <button id="openSidebar" type="button" onclick="openSidebar()" title="Open sidebar">Filters</button>
@@ -233,8 +342,11 @@ let filters = {
     severity:"",
     search:"",
     fields:["event","headline","description","areaDesc"],
-    expiredOnly:false
+    expiredOnly:false,
+    eventTitles:[]
 };
+
+let eventTitleFilterSnapshot=[];
 
 // ===== DRAG RESIZE =====
 const resizer = document.getElementById('resizer');
@@ -346,9 +458,85 @@ function getFiltered(fips){
     return (rawData[fips]||[]).filter(a=>{
         if(filters.severity && a.severity!==filters.severity) return false;
         if(filters.expiredOnly && !isExpired(a)) return false;
+        if(filters.eventTitles.length && !filters.eventTitles.includes(a.event)) return false;
         if(filters.search && !evaluateSearch(filters.search,buildText(a))) return false;
         return true;
     });
+}
+
+function getEventTitleCounts(){
+    const counts={};
+    Object.values(rawData).flat().forEach(a=>{
+        const title=a.event || "Untitled";
+        counts[title]=(counts[title]||0)+1;
+    });
+    return Object.entries(counts).sort((a,b)=>a[0].localeCompare(b[0]));
+}
+
+function renderEventFilterList(){
+    const list=document.getElementById('eventFilterList');
+    const rows=getEventTitleCounts();
+
+    if(!rows.length){
+        list.innerHTML='<div class="alert">No event titles found</div>';
+        return;
+    }
+
+    list.innerHTML=rows.map(([title,count])=>{
+        const checked=!filters.eventTitles.length || filters.eventTitles.includes(title);
+        return `
+        <label>
+            <span class="event-title">
+                <input type="checkbox" value="${escapeHtml(title)}" ${checked ? "checked" : ""} onchange="updateEventTitleFilter()">
+                <span>${escapeHtml(title)}</span>
+            </span>
+            <span class="event-count">${count}</span>
+        </label>`;
+    }).join("");
+}
+
+function escapeHtml(value){
+    return String(value)
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#39;");
+}
+
+function updateEventTitleFilter(){
+    const boxes=[...document.querySelectorAll('#eventFilterList input[type="checkbox"]')];
+    const checked=boxes.filter(box=>box.checked).map(box=>box.value);
+    filters.eventTitles=checked.length===boxes.length ? [] : checked;
+    redrawMap();
+}
+
+function selectAllEventTitles(){
+    document.querySelectorAll('#eventFilterList input[type="checkbox"]').forEach(box=>box.checked=true);
+    updateEventTitleFilter();
+}
+
+function selectNoEventTitles(){
+    document.querySelectorAll('#eventFilterList input[type="checkbox"]').forEach(box=>box.checked=false);
+    updateEventTitleFilter();
+}
+
+function clearEventTitles(){
+    const snapshot=new Set(eventTitleFilterSnapshot);
+    document.querySelectorAll('#eventFilterList input[type="checkbox"]').forEach(box=>{
+        box.checked=!snapshot.size || snapshot.has(box.value);
+    });
+    updateEventTitleFilter();
+}
+
+function openEventFilterPopup(){
+    eventTitleFilterSnapshot=[...filters.eventTitles];
+    renderEventFilterList();
+    document.getElementById('eventFilterOverlay').classList.add('open');
+}
+
+function closeEventFilterPopup(){
+    document.getElementById('eventFilterOverlay').classList.remove('open');
 }
 
 // ===== DATA =====
@@ -383,6 +571,9 @@ async function refresh(){
     const r=await fetch(ALERTS_URL);
     const d=await r.json();
     rawData=processAlerts(d);
+    if(document.getElementById('eventFilterOverlay').classList.contains('open')){
+        renderEventFilterList();
+    }
     redrawMap();
 }
 
@@ -449,7 +640,7 @@ function redrawMap(){
         style:getFeatureStyle,
         onEachFeature:(f,layer)=>{
             const fips=getFips(f);
-            const alerts=getFiltered(fips);
+            const alerts=rawData[fips]||[];
             const name=f.properties.NAME;
 
             let tooltip=name+" ("+alerts.length+")";
@@ -457,7 +648,7 @@ function redrawMap(){
             if(showEventsToggle.checked && alerts.length){
                 const events=[...new Set(alerts.map(a=>a.event))];
                 const colored=events.map(e =>
-                    `<span style="color:${getColor(e)};font-weight:bold;">●</span> ${e}`
+                    `<span style="color:${getColor(getPriorityCategory(e))};font-weight:bold;">●</span> ${e}`
                 );
                 tooltip+="<br>"+colored.join("<br>");
             }
@@ -519,7 +710,7 @@ function openSidebar(){
 
 function showSidebar(fips,name,f){
     openSidebar();
-    const alerts=getFiltered(fips);
+    const alerts=rawData[fips]||[];
     const stateFips = String(f.properties.STATE).padStart(2,'0');
     const countyFips = String(f.properties.COUNTY).padStart(3,'0');
     const sameCode = stateFips + countyFips;
@@ -748,7 +939,15 @@ function shouldIgnoreShortcutEvent(e) {
 document.addEventListener('keydown', (e) => {
     if (shouldIgnoreShortcutEvent(e)) return;
 
-    if (e.key === 'r' || e.key === 'R') {
+    if (e.key === 'Escape' && document.getElementById('eventFilterOverlay').classList.contains('open')) {
+        closeEventFilterPopup();
+        return;
+    }
+
+    if (e.key === 't' || e.key === 'T') {
+        openEventFilterPopup();
+        return;
+    } else if (e.key === 'r' || e.key === 'R') {
         // Toggle radar on/off
         radarToggle.checked = !radarToggle.checked;
         toggleRadar();
