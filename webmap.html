@@ -6,7 +6,7 @@
 
 <style>
 body { margin:0; display:flex; font-family:Arial; }
-#map { width:70%; height:100vh; }
+#map { width:70%; height:100vh; position:relative; }
 #tornadoWarningBanner {
     position:absolute;
     top:14px;
@@ -257,6 +257,135 @@ body.sidebar-closed #openSidebar {
 #eventFilterList .event-cycle:hover {
     background:#eee;
 }
+
+#historyPanel {
+    position:fixed;
+    left:50%;
+    bottom:18px;
+    transform:translateX(-50%);
+    z-index:2100;
+    display:none;
+    width:min(860px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+}
+
+#historyPanel.open {
+    display:block;
+}
+
+#historyMapBadges {
+    position:absolute;
+    top:14px;
+    left:14px;
+    z-index:1000;
+    display:none;
+    gap:6px;
+    align-items:center;
+    pointer-events:none;
+}
+
+body.history-active #historyMapBadges {
+    display:flex;
+}
+
+.history-map-badge {
+    background:#fff;
+    border:1px solid #333;
+    border-radius:4px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.22);
+    font-family:monospace;
+    font-size:12px;
+    padding:6px 10px;
+    white-space:nowrap;
+}
+
+#historyModeBadge {
+    font-weight:bold;
+    text-transform:uppercase;
+    background:#111;
+    color:#fff;
+}
+
+#historyHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#historyHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#historyStatus {
+    color:#444;
+    font-family:monospace;
+    margin-left:auto;
+}
+
+#closeHistory {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#historyBody {
+    padding:10px;
+}
+
+#historySlider {
+    width:100%;
+}
+
+#historyTime {
+    margin:6px 0 10px;
+    font-family:monospace;
+}
+
+#historyControls {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:end;
+    gap:8px;
+}
+
+#historyControls label {
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+}
+
+#historyControls input {
+    font-size:12px;
+}
+
+#historyControls button {
+    min-width:34px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+#historyControls button:hover,
+#closeHistory:hover {
+    background:#eee;
+}
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -265,6 +394,10 @@ body.sidebar-closed #openSidebar {
 
 <div id="map">
   <div id="tornadoWarningBanner" role="status" aria-live="polite">tornado warnings</div>
+  <div id="historyMapBadges" aria-live="polite">
+    <div id="historyModeBadge" class="history-map-badge">History</div>
+    <div id="historyTimeBadge" class="history-map-badge">No history loaded</div>
+  </div>
 </div>
 <div id="updateTimer">
   <div class="weather-update">Weather: <span id="weatherCountdown">1:00</span></div>
@@ -284,6 +417,32 @@ body.sidebar-closed #openSidebar {
       <button type="button" onclick="closeEventFilterPopup()">Close</button>
     </div>
     <div id="eventFilterList"></div>
+  </div>
+</div>
+
+<div id="historyPanel" role="dialog" aria-modal="false" aria-labelledby="historyTitle">
+  <div id="historyHeader">
+    <h3 id="historyTitle">History Playback</h3>
+    <span id="historyStatus">0 frames</span>
+    <button id="closeHistory" type="button" onclick="closeHistoryPanel()" aria-label="Close history playback" title="Close">&times;</button>
+  </div>
+  <div id="historyBody">
+    <input id="historySlider" type="range" min="0" max="0" value="0" oninput="showHistoryFrame(Number(this.value))">
+    <div id="historyTime">No history loaded</div>
+    <div id="historyControls">
+      <label>Start <input id="historyStart" type="datetime-local" onchange="syncHistoryRangeInputs()"></label>
+      <label>Stop <input id="historyStop" type="datetime-local" onchange="syncHistoryRangeInputs()"></label>
+      <label>Frames/step <input id="historyFramesPerStep" type="number" min="1" max="1440" value="1"></label>
+      <label>Steps/min <input id="historyStepsPerMinute" type="number" min="1" max="600" value="60"></label>
+      <button type="button" onclick="rewindHistory()" title="Rewind">|&lt;</button>
+      <button type="button" onclick="playHistory(-1)" title="Reverse">&lt;</button>
+      <button type="button" onclick="playHistory(1)" title="Play">&gt;</button>
+      <button type="button" onclick="stopHistoryPlayback()" title="Stop">Stop</button>
+      <button type="button" onclick="fastForwardHistory()" title="Fast forward">&gt;|</button>
+      <button type="button" onclick="searchNextTornadoWarningFrame()" title="Find next tornado warning">Tornado Search</button>
+      <button type="button" onclick="clearHistorySnapshots()" title="Clear saved history">Clear History</button>
+      <button type="button" onclick="closeHistoryPanel()" title="Return to live">Live</button>
+    </div>
   </div>
 </div>
 
@@ -388,16 +547,39 @@ if (map.keyboard) {
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
 let countyFeatureByFips = {};
 let radarLayer = null;
+let currentRadarTimestamp = Date.now();
 let countyOpacityValue = 0.7;
 let countyColorizationEnabled = true;
 let stateLayer;
 let eventFocusLayer = null;
+let liveRawData = {};
+let historyFrames = [];
+let historyModeActive = false;
+let historyPlaybackTimer = null;
+let historyPlaybackDirection = 1;
+let historyPlaybackToken = 0;
+let historyPlaybackActive = false;
+let historyFrameTimestamp = null;
+let historyPanelLoading = false;
+let historyLoadToken = 0;
+let historyFrameLoadToken = 0;
+let historyFrameCache = new Map();
+let currentSidebarSelection = null;
 
 // Timer tracking
 let nextWeatherUpdate = Date.now();
 let nextRadarUpdate = Date.now();
 const WEATHER_UPDATE_INTERVAL = 60000; // 60 seconds
 const RADAR_UPDATE_INTERVAL = 300000; // 300 seconds
+const HISTORY_DB_NAME = "nwsDashboardHistory";
+const HISTORY_DB_VERSION = 2;
+const HISTORY_STORE_NAME = "snapshots";
+const RADAR_TILE_STORE_NAME = "radarTiles";
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RADAR_TILE_URL = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png";
+const HISTORY_RADAR_WMS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi";
+const HISTORY_RADAR_WMS_LAYER = "nexrad-n0r-wmst";
+const HISTORY_FRAME_CACHE_LIMIT = 30;
 
 const stateAbbreviations = {
     "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
@@ -424,6 +606,8 @@ let focusedEventTitle="";
 let focusedEventCountyFips="";
 let isDraggingEventFilter=false;
 let eventFilterDragOffset={ x:0, y:0 };
+let isDraggingHistoryPanel=false;
+let historyPanelDragOffset={ x:0, y:0 };
 
 // ===== DRAG RESIZE =====
 const resizer = document.getElementById('resizer');
@@ -504,13 +688,68 @@ window.addEventListener('resize',()=>{
     if(document.getElementById('eventFilterOverlay').classList.contains('open')){
         clampEventFilterDialog();
     }
+    if(document.getElementById('historyPanel').classList.contains('open')){
+        clampHistoryPanel();
+    }
+});
+
+// ===== HISTORY PANEL DRAG =====
+const historyPanel=document.getElementById('historyPanel');
+const historyHeader=document.getElementById('historyHeader');
+
+function clampHistoryPanel(){
+    const rect=historyPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    historyPanel.style.left=left+"px";
+    historyPanel.style.top=top+"px";
+    historyPanel.style.bottom="auto";
+    historyPanel.style.transform="none";
+}
+
+historyHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=historyPanel.getBoundingClientRect();
+    historyPanel.style.left=rect.left+"px";
+    historyPanel.style.top=rect.top+"px";
+    historyPanel.style.bottom="auto";
+    historyPanel.style.transform="none";
+
+    isDraggingHistoryPanel=true;
+    historyPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingHistoryPanel) return;
+
+    const rect=historyPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-historyPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-historyPanelDragOffset.y,0),maxTop);
+
+    historyPanel.style.left=left+"px";
+    historyPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingHistoryPanel=false;
 });
 
 // ===== TIMER =====
 setInterval(()=>{
     document.querySelectorAll(".timer").forEach(el=>{
         const exp = new Date(el.dataset.exp);
-        let diff = (exp - new Date())/1000;
+        const referenceTime = Number(el.dataset.ref) || getActiveTimestamp();
+        let diff = (exp - referenceTime)/1000;
 
         if(diff <= 0){
             el.innerText = "Expired";
@@ -532,6 +771,10 @@ setInterval(()=>{
 function sameToFips(code){ return code.substring(1); }
 function getFips(f){ return (f.id || (f.properties.STATE + f.properties.COUNTY)).padStart(5,"0"); }
 
+function getActiveTimestamp(){
+    return historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : Date.now();
+}
+
 function hashAlertId(str){
     let hash=0;
     for(let i=0;i<str.length;i++){
@@ -542,7 +785,666 @@ function hashAlertId(str){
 }
 
 function isExpired(a){
-    return a.expires && new Date(a.expires)<new Date();
+    return a.expires && new Date(a.expires).getTime() < getActiveTimestamp();
+}
+
+function cloneJson(value){
+    return JSON.parse(JSON.stringify(value));
+}
+
+function formatDateTimeLocal(timestamp){
+    const d=new Date(timestamp);
+    const local=new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0,16);
+}
+
+function parseDateTimeLocal(value){
+    return value ? new Date(value).getTime() : NaN;
+}
+
+function formatWmsTime(timestamp){
+    const rounded=Math.floor(timestamp / 300000) * 300000;
+    return new Date(rounded).toISOString().replace(/\.\d{3}Z$/,"Z");
+}
+
+function nextPaint(){
+    return new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+}
+
+function openHistoryDb(){
+    return new Promise((resolve,reject)=>{
+        const request=indexedDB.open(HISTORY_DB_NAME,HISTORY_DB_VERSION);
+        request.onupgradeneeded=()=>{
+            const db=request.result;
+            if(!db.objectStoreNames.contains(HISTORY_STORE_NAME)){
+                db.createObjectStore(HISTORY_STORE_NAME,{ keyPath:"timestamp" });
+            }
+            let radarTileStore;
+            if(!db.objectStoreNames.contains(RADAR_TILE_STORE_NAME)){
+                radarTileStore=db.createObjectStore(RADAR_TILE_STORE_NAME,{ keyPath:"id" });
+            } else {
+                radarTileStore=request.transaction.objectStore(RADAR_TILE_STORE_NAME);
+            }
+            if(!radarTileStore.indexNames.contains("timestamp")){
+                radarTileStore.createIndex("timestamp","timestamp");
+            }
+        };
+        request.onsuccess=()=>resolve(request.result);
+        request.onerror=()=>reject(request.error);
+    });
+}
+
+async function withHistoryStore(mode,callback,storeName=HISTORY_STORE_NAME){
+    const db=await openHistoryDb();
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,mode);
+        const store=tx.objectStore(storeName);
+        const result=callback(store);
+        tx.oncomplete=()=>{
+            db.close();
+            resolve(result);
+        };
+        tx.onerror=()=>{
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+async function withHistoryStores(storeNames,mode,callback){
+    const db=await openHistoryDb();
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeNames,mode);
+        const stores={};
+        storeNames.forEach(name=>{ stores[name]=tx.objectStore(name); });
+        const result=callback(stores);
+        tx.oncomplete=()=>{
+            db.close();
+            resolve(result);
+        };
+        tx.onerror=()=>{
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+function getRadarTileUrl(coords,timestamp){
+    return RADAR_TILE_URL
+        .replace("{z}",coords.z)
+        .replace("{x}",coords.x)
+        .replace("{y}",coords.y) + "?_t=" + timestamp;
+}
+
+function getRadarTileId(frameId,coords){
+    return frameId + ":" + coords.z + ":" + coords.x + ":" + coords.y;
+}
+
+function getCurrentRadarTileCoords(){
+    const zoom=Math.round(map.getZoom());
+    const tileSize=256;
+    const pixelBounds=map.getPixelBounds();
+    const tileBounds=L.bounds(
+        pixelBounds.min.divideBy(tileSize).floor(),
+        pixelBounds.max.divideBy(tileSize).floor()
+    );
+    const coords=[];
+    for(let x=tileBounds.min.x;x<=tileBounds.max.x;x++){
+        for(let y=tileBounds.min.y;y<=tileBounds.max.y;y++){
+            coords.push({ x, y, z:zoom });
+        }
+    }
+    return coords;
+}
+
+async function storeRadarTilesForFrame(frameId,timestamp){
+    if(!radarToggle.checked) return [];
+
+    const coords=getCurrentRadarTileCoords();
+    const tiles=[];
+    await Promise.all(coords.map(async coord=>{
+        try{
+            const response=await fetch(getRadarTileUrl(coord,timestamp),{ cache:"reload" });
+            if(!response.ok) return;
+            const blob=await response.blob();
+            tiles.push({
+                id:getRadarTileId(frameId,coord),
+                frameId,
+                timestamp,
+                coord,
+                blob,
+                contentType:blob.type || "image/png"
+            });
+        }catch(error){
+            console.warn("Unable to store radar tile",coord,error);
+        }
+    }));
+
+    if(tiles.length){
+        await withHistoryStore("readwrite",(store)=>{
+            tiles.forEach(tile=>store.put(tile));
+        },RADAR_TILE_STORE_NAME);
+    }
+    return coords;
+}
+
+async function pruneOldRadarTiles(cutoff){
+    try{
+        await withHistoryStore("readwrite",(store)=>{
+            const request=store.index("timestamp").openCursor(IDBKeyRange.upperBound(cutoff));
+            request.onsuccess=()=>{
+                const cursor=request.result;
+                if(!cursor) return;
+                cursor.delete();
+                cursor.continue();
+            };
+        },RADAR_TILE_STORE_NAME);
+    }catch(error){
+        console.warn("Unable to prune old radar tiles",error);
+    }
+}
+
+async function getStoredRadarTileBlob(frameId,coords){
+    let blob=null;
+    await withHistoryStore("readonly",(store)=>{
+        const request=store.get(getRadarTileId(frameId,coords));
+        request.onsuccess=()=>{
+            blob=request.result?.blob || null;
+        };
+    },RADAR_TILE_STORE_NAME);
+    return blob;
+}
+
+async function saveHistorySnapshot(alerts,timestamp=Date.now()){
+    try{
+        const snapshot={
+            timestamp,
+            kind:"weather",
+            scope:"US",
+            alerts:cloneJson(alerts),
+            view:{
+                lat:map.getCenter().lat,
+                lng:map.getCenter().lng,
+                zoom:map.getZoom()
+            },
+            radar:{
+                enabled:radarToggle.checked,
+                opacity:Number(radarOpacity.value) / 100,
+                timestamp:currentRadarTimestamp,
+                wmsTime:formatWmsTime(currentRadarTimestamp),
+                source:"IEM WMS-T"
+            },
+            mapType:mapTypeSelector.value
+        };
+
+        await withHistoryStore("readwrite",(store)=>{
+            store.put(snapshot);
+            store.delete(IDBKeyRange.upperBound(timestamp - HISTORY_RETENTION_MS));
+        });
+    }catch(error){
+        console.warn("Unable to save history snapshot",error);
+    }
+}
+
+function createHistoryFrameMetadata(frame){
+    const tornadoWarningCounties=[];
+    Object.entries(frame.alerts || {}).forEach(([fips,alerts])=>{
+        if(alerts.some(alert=>getPriorityCategory(alert.event) === "tornado-warning")){
+            tornadoWarningCounties.push(fips);
+        }
+    });
+
+    return {
+        timestamp:frame.timestamp,
+        kind:frame.kind || "weather",
+        scope:frame.scope || "US",
+        radar:frame.radar || null,
+        mapType:frame.mapType || "",
+        alertCount:Object.values(frame.alerts || {}).reduce((total,alerts)=>total + alerts.length,0),
+        tornadoWarningCounties
+    };
+}
+
+function cacheHistoryFrame(frame){
+    historyFrameCache.set(frame.timestamp,frame);
+    if(historyFrameCache.size > HISTORY_FRAME_CACHE_LIMIT){
+        const oldestKey=historyFrameCache.keys().next().value;
+        historyFrameCache.delete(oldestKey);
+    }
+}
+
+async function loadHistoryFrame(timestamp){
+    if(historyFrameCache.has(timestamp)){
+        const frame=historyFrameCache.get(timestamp);
+        historyFrameCache.delete(timestamp);
+        historyFrameCache.set(timestamp,frame);
+        return frame;
+    }
+
+    let frame=null;
+    await withHistoryStore("readonly",(store)=>{
+        const request=store.get(timestamp);
+        request.onsuccess=()=>{
+            const result=request.result;
+            if(result && result.alerts && typeof result.alerts === "object"){
+                frame=result;
+            }
+        };
+    });
+
+    if(frame) cacheHistoryFrame(frame);
+    return frame;
+}
+
+function normalizeHistoryFrames(frames){
+    const framesByMinute=new Map();
+    frames.forEach(frame=>{
+        const minute=Math.floor(frame.timestamp / WEATHER_UPDATE_INTERVAL);
+        const existing=framesByMinute.get(minute);
+        if(!existing || (frame.kind === "weather" && existing.kind !== "weather")){
+            framesByMinute.set(minute,frame);
+        }
+    });
+    return [...framesByMinute.values()].sort((a,b)=>a.timestamp-b.timestamp);
+}
+
+async function loadHistorySnapshots(){
+    try{
+        let frames=[];
+        const cutoff=Date.now() - HISTORY_RETENTION_MS;
+        await withHistoryStore("readonly",(store)=>{
+            const request=store.openCursor(IDBKeyRange.lowerBound(cutoff));
+            request.onsuccess=()=>{
+                const cursor=request.result;
+                if(!cursor) return;
+                const frame=cursor.value;
+                if(frame && Number.isFinite(frame.timestamp) && frame.alerts && typeof frame.alerts === "object"){
+                    frames.push(createHistoryFrameMetadata(frame));
+                }
+                cursor.continue();
+            };
+        });
+        return normalizeHistoryFrames(frames);
+    }catch(error){
+        console.warn("Unable to load history snapshots",error);
+        return [];
+    }
+}
+
+async function clearHistorySnapshots(){
+    stopHistoryPlayback();
+    try{
+        await withHistoryStores([HISTORY_STORE_NAME,RADAR_TILE_STORE_NAME],"readwrite",(stores)=>{
+            stores[HISTORY_STORE_NAME].clear();
+            stores[RADAR_TILE_STORE_NAME].clear();
+        });
+        historyFrames=[];
+        historyFrameCache.clear();
+        historyFrameLoadToken++;
+        historyFrameTimestamp=null;
+        historyStart.value="";
+        historyStop.value="";
+        updateHistoryPanelState();
+        if(historyModeActive){
+            rawData=liveRawData;
+            reloadRadar();
+            redrawMap();
+        }
+    }catch(error){
+        console.warn("Unable to clear history snapshots",error);
+    }
+}
+
+function getHistoryFrameRange(){
+    const start=parseDateTimeLocal(historyStart.value);
+    const stop=parseDateTimeLocal(historyStop.value);
+    const lo=Number.isFinite(start) ? start : -Infinity;
+    const hi=Number.isFinite(stop) ? stop : Infinity;
+    return lo <= hi ? { start:lo, stop:hi } : { start:hi, stop:lo };
+}
+
+function findNearestHistoryIndex(timestamp,preferEnd=false){
+    if(!historyFrames.length) return 0;
+    let best=preferEnd ? historyFrames.length - 1 : 0;
+    let bestDelta=Infinity;
+    historyFrames.forEach((frame,index)=>{
+        const delta=Math.abs(frame.timestamp - timestamp);
+        if(delta < bestDelta){
+            best=index;
+            bestDelta=delta;
+        }
+    });
+    return best;
+}
+
+function getBoundedHistoryIndex(direction){
+    if(!historyFrames.length) return 0;
+    const range=getHistoryFrameRange();
+    const sliderIndex=Number(historySlider.value) || 0;
+    let index=sliderIndex;
+
+    if(historyFrames[index]?.timestamp < range.start){
+        index=findNearestHistoryIndex(range.start);
+    }
+    if(historyFrames[index]?.timestamp > range.stop){
+        index=findNearestHistoryIndex(range.stop,true);
+    }
+
+    while(historyFrames[index] && (historyFrames[index].timestamp < range.start || historyFrames[index].timestamp > range.stop)){
+        index+=direction;
+        if(index < 0 || index >= historyFrames.length) break;
+    }
+    return Math.min(Math.max(index,0),historyFrames.length - 1);
+}
+
+function updateHistoryPanelState(){
+    const slider=document.getElementById('historySlider');
+    const status=document.getElementById('historyStatus');
+    slider.max=Math.max(0,historyFrames.length - 1);
+    status.textContent=historyPanelLoading ? "Loading..." : historyFrames.length + (historyFrames.length === 1 ? " frame" : " frames");
+
+    if(!historyFrames.length){
+        slider.value=0;
+        historyTimeBadge.textContent="No history loaded";
+        historyTime.textContent=historyPanelLoading ? "Loading history..." : "No history loaded";
+        return;
+    }
+
+    const first=historyFrames[0].timestamp;
+    const last=historyFrames[historyFrames.length - 1].timestamp;
+    if(!historyStart.value) historyStart.value=formatDateTimeLocal(first);
+    if(!historyStop.value) historyStop.value=formatDateTimeLocal(last);
+}
+
+function applyHistoryRadar(frame){
+    try{
+        if(radarLayer) map.removeLayer(radarLayer);
+        radarLayer=null;
+        if(!radarToggle.checked || !frame?.radar?.enabled) return;
+
+        radarLayer=createHistoryRadarLayer(frame.radar.wmsTime || formatWmsTime(frame.radar.timestamp || frame.timestamp));
+        radarLayer.setOpacity(frame.radar.opacity ?? Number(radarOpacity.value) / 100);
+        radarLayer.addTo(map);
+        radarLayer.bringToFront();
+    }catch(error){
+        console.warn("Unable to apply history radar",error);
+        radarLayer=null;
+    }
+}
+
+function getCurrentHistoryFrameMetadata(){
+    if(!historyFrames.length) return null;
+    return historyFrames[Number(historySlider.value) || 0] || null;
+}
+
+function getHistoryFramesPerStep(){
+    return Math.min(Math.max(Number(historyFramesPerStep.value) || 1,1),1440);
+}
+
+function getHistoryStepsPerMinute(){
+    return Math.min(Math.max(Number(historyStepsPerMinute.value) || 60,1),600);
+}
+
+function isHistoryPlaybackRunning(){
+    return historyPlaybackActive;
+}
+
+function refreshEventFilterListIfOpen(){
+    if(document.getElementById('eventFilterOverlay').classList.contains('open')){
+        renderEventFilterList();
+    }
+}
+
+async function showHistoryFrame(index,options={}){
+    if(!historyFrames.length) return;
+    try{
+        const { stopPlayback=true, updateRadar=true }=options;
+        if(stopPlayback) stopHistoryPlayback(false,false);
+
+        index=Math.min(Math.max(index,0),historyFrames.length - 1);
+        const metadata=historyFrames[index];
+        if(!metadata) return;
+        const loadToken=++historyFrameLoadToken;
+
+        historySlider.value=index;
+        historyTimeBadge.textContent=new Date(metadata.timestamp).toLocaleString();
+        historyTime.textContent=(metadata.alertCount ?? 0) + " alerts in the U.S. archive";
+
+        const frame=await loadHistoryFrame(metadata.timestamp);
+        if(loadToken !== historyFrameLoadToken || !frame || !frame.alerts) return;
+
+        historyModeActive=true;
+        historyFrameTimestamp=frame.timestamp;
+        rawData=cloneJson(frame.alerts || {});
+        if(updateRadar) applyHistoryRadar(frame);
+        if(!isHistoryPlaybackRunning()) refreshEventFilterListIfOpen();
+        redrawMap();
+        if(currentSidebarSelection){
+            showSidebar(
+                currentSidebarSelection.fips,
+                currentSidebarSelection.name,
+                currentSidebarSelection.feature,
+                false
+            );
+        }
+    }catch(error){
+        console.warn("Unable to show history frame",error);
+    }
+}
+
+async function moveHistoryBy(frameDelta,options={}){
+    if(!historyFrames.length) return;
+    const { updateRadar=true, stopPlayback=true }=options;
+    if(stopPlayback) stopHistoryPlayback(false,false);
+
+    const range=getHistoryFrameRange();
+    const currentIndex=Number(historySlider.value) || 0;
+    let next=currentIndex + frameDelta;
+
+    if(next < 0 || next >= historyFrames.length){
+        const direction=frameDelta >= 0 ? 1 : -1;
+        next=direction > 0 ? findNearestHistoryIndex(range.stop,true) : findNearestHistoryIndex(range.start);
+    } else {
+        const nextFrame=historyFrames[next];
+        if(nextFrame.timestamp < range.start){
+            next=findNearestHistoryIndex(range.start);
+        } else if(nextFrame.timestamp > range.stop){
+            next=findNearestHistoryIndex(range.stop,true);
+        }
+    }
+
+    await showHistoryFrame(next,{ stopPlayback:false, updateRadar });
+}
+
+function getTornadoWarningCountySet(frame){
+    if(frame?.tornadoWarningCounties){
+        return new Set(frame.tornadoWarningCounties);
+    }
+
+    const counties=new Set();
+    Object.entries(frame?.alerts || {}).forEach(([fips,alerts])=>{
+        if(alerts.some(alert=>getPriorityCategory(alert.event) === "tornado-warning")){
+            counties.add(fips);
+        }
+    });
+    return counties;
+}
+
+function hasNewTornadoWarningCounty(candidateCounties,currentCounties){
+    for(const fips of candidateCounties){
+        if(!currentCounties.has(fips)) return true;
+    }
+    return false;
+}
+
+async function searchNextTornadoWarningFrame(){
+    if(!historyFrames.length) return;
+    stopHistoryPlayback(false,false);
+
+    const range=getHistoryFrameRange();
+    const currentIndex=Number(historySlider.value) || 0;
+    const currentFrame=historyFrames[currentIndex];
+    const currentCounties=getTornadoWarningCountySet(currentFrame);
+    const needsNewCounty=currentCounties.size > 0;
+    let startIndex=currentIndex + 1;
+
+    if(currentFrame?.timestamp < range.start){
+        startIndex=findNearestHistoryIndex(range.start);
+    }
+
+    for(let index=startIndex;index<historyFrames.length;index++){
+        const frame=historyFrames[index];
+        if(frame.timestamp < range.start) continue;
+        if(frame.timestamp > range.stop) break;
+
+        const candidateCounties=getTornadoWarningCountySet(frame);
+        if(!candidateCounties.size) continue;
+        if(needsNewCounty && !hasNewTornadoWarningCounty(candidateCounties,currentCounties)) continue;
+
+        await showHistoryFrame(index);
+        return;
+    }
+}
+
+function scheduleHistoryPlayback(playbackToken=historyPlaybackToken){
+    const stepsPerMinute=getHistoryStepsPerMinute();
+    historyPlaybackTimer=setTimeout(()=>{
+        historyPlaybackTimer=null;
+        if(playbackToken !== historyPlaybackToken) return;
+        stepHistoryPlayback(playbackToken).catch(error=>{
+            console.warn("Unable to step history playback",error);
+            stopHistoryPlayback();
+        });
+    },60000 / stepsPerMinute);
+}
+
+async function stepHistoryPlayback(playbackToken=historyPlaybackToken){
+    if(playbackToken !== historyPlaybackToken) return;
+    if(!historyFrames.length) return;
+
+    const range=getHistoryFrameRange();
+    const framesPerStep=getHistoryFramesPerStep();
+    let next=(Number(historySlider.value) || 0) + (historyPlaybackDirection * framesPerStep);
+    if(next < 0 || next >= historyFrames.length){
+        stopHistoryPlayback();
+        return;
+    }
+
+    const nextFrame=historyFrames[next];
+    if(!nextFrame || nextFrame.timestamp < range.start || nextFrame.timestamp > range.stop){
+        stopHistoryPlayback();
+        return;
+    }
+
+    await showHistoryFrame(next,{ stopPlayback:false, updateRadar:false });
+    if(playbackToken !== historyPlaybackToken) return;
+    scheduleHistoryPlayback(playbackToken);
+}
+
+async function playHistory(direction=1){
+    if(!historyFrames.length) return;
+    stopHistoryPlayback(false,false);
+    historyPlaybackDirection=direction;
+    historyPlaybackActive=true;
+    const playbackToken=++historyPlaybackToken;
+
+    const startIndex=getBoundedHistoryIndex(direction);
+    await showHistoryFrame(startIndex,{ stopPlayback:false, updateRadar:false });
+    if(playbackToken !== historyPlaybackToken) return;
+    if(radarLayer) map.removeLayer(radarLayer);
+    radarLayer=null;
+
+    scheduleHistoryPlayback(playbackToken);
+}
+
+function stopHistoryPlayback(resetDirection=true,updateRadarOnStop=true){
+    const wasPlaying=historyPlaybackActive;
+    historyPlaybackActive=false;
+    historyPlaybackToken++;
+    if(historyPlaybackTimer){
+        clearTimeout(historyPlaybackTimer);
+        historyPlaybackTimer=null;
+    }
+    if(resetDirection) historyPlaybackDirection=1;
+    if(wasPlaying && updateRadarOnStop && historyFrames.length){
+        const metadata=getCurrentHistoryFrameMetadata();
+        if(metadata) applyHistoryRadar(metadata);
+        redrawMap();
+        refreshEventFilterListIfOpen();
+    }
+}
+
+async function rewindHistory(){
+    stopHistoryPlayback();
+    if(!historyFrames.length) return;
+    await showHistoryFrame(findNearestHistoryIndex(getHistoryFrameRange().start));
+}
+
+async function fastForwardHistory(){
+    stopHistoryPlayback();
+    if(!historyFrames.length) return;
+    await showHistoryFrame(findNearestHistoryIndex(getHistoryFrameRange().stop,true));
+}
+
+function syncHistoryRangeInputs(){
+    if(!historyFrames.length) return;
+    const index=getBoundedHistoryIndex(historyPlaybackDirection);
+    historySlider.value=index;
+}
+
+async function openHistoryPanel(){
+    if(historyPanelLoading) return;
+    const loadToken=++historyLoadToken;
+    stopHistoryPlayback();
+    historyModeActive=true;
+    document.body.classList.add('history-active');
+    historyPanelLoading=true;
+    historyFrames=[];
+    historyStart.value="";
+    historyStop.value="";
+    historyPanel.classList.add('open');
+    clampHistoryPanel();
+    updateHistoryPanelState();
+    await nextPaint();
+
+    try{
+        const loadedFrames=await loadHistorySnapshots();
+        if(loadToken !== historyLoadToken) return;
+        historyFrames=loadedFrames;
+        historyPanelLoading=false;
+        updateHistoryPanelState();
+        if(historyFrames.length){
+            await showHistoryFrame(historyFrames.length - 1);
+        }
+    }catch(error){
+        if(loadToken !== historyLoadToken) return;
+        historyPanelLoading=false;
+        historyFrames=[];
+        updateHistoryPanelState();
+        console.warn("Unable to open history panel",error);
+    }
+}
+
+function closeHistoryPanel(){
+    historyLoadToken++;
+    historyFrameLoadToken++;
+    historyPanelLoading=false;
+    stopHistoryPlayback();
+    historyPanel.classList.remove('open');
+    document.body.classList.remove('history-active');
+    historyModeActive=false;
+    historyFrameTimestamp=null;
+    rawData=liveRawData;
+    reloadRadar();
+    redrawMap();
+    if(currentSidebarSelection){
+        showSidebar(
+            currentSidebarSelection.fips,
+            currentSidebarSelection.name,
+            currentSidebarSelection.feature,
+            false
+        );
+    }
 }
 
 // ===== SEARCH =====
@@ -759,12 +1661,17 @@ async function refresh(){
     nextWeatherUpdate = Date.now() + WEATHER_UPDATE_INTERVAL;
     const r=await fetch(ALERTS_URL);
     const d=await r.json();
-    rawData=processAlerts(d);
-    eventTitleCyclePositions={};
-    if(document.getElementById('eventFilterOverlay').classList.contains('open')){
-        renderEventFilterList();
+    liveRawData=processAlerts(d);
+    await saveHistorySnapshot(liveRawData);
+
+    if(!historyModeActive){
+        rawData=liveRawData;
+        eventTitleCyclePositions={};
+        if(document.getElementById('eventFilterOverlay').classList.contains('open')){
+            renderEventFilterList();
+        }
+        redrawMap();
     }
-    redrawMap();
 }
 
 function updateTornadoWarningBanner(){
@@ -949,7 +1856,7 @@ function redrawMap(){
 
             if(blinkToggle.checked &&
                countyColorizationEnabled &&
-               filteredAlerts.some(a=>((new Date()-new Date(a.sent))/1000)<3600)){
+               filteredAlerts.some(a=>((getActiveTimestamp()-new Date(a.sent).getTime())/1000)<3600)){
                 let visible=true;
                 blinkIntervals[fips]=setInterval(()=>{
                     visible=!visible;
@@ -995,14 +1902,18 @@ function openSidebar(){
     resizeMapAfterSidebarChange();
 }
 
-function showSidebar(fips,name,f){
-    openSidebar();
+function showSidebar(fips,name,f,shouldOpen=true){
+    if(shouldOpen) openSidebar();
+    currentSidebarSelection={ fips, name, feature:f };
     const alerts=rawData[fips]||[];
     const stateFips = String(f.properties.STATE).padStart(2,'0');
     const countyFips = String(f.properties.COUNTY).padStart(3,'0');
     const sameCode = stateFips + countyFips;
     const stateAbbr = stateAbbreviations[stateFips] || stateFips;
     let html = `<h3>${name}, ${stateAbbr} (${sameCode})</h3>`;
+    if(historyModeActive && historyFrameTimestamp){
+        html += `<div class="alert"><b>History:</b> ${new Date(historyFrameTimestamp).toLocaleString()}</div>`;
+    }
 
     if(!alerts.length){
         content.innerHTML=html+"No alerts";
@@ -1021,7 +1932,7 @@ function showSidebar(fips,name,f){
         <b>Expires:</b> ${a.expires ? new Date(a.expires).toLocaleString() : "N/A"}<br>
 
         <b>Expires in:</b>
-        <span class="timer" data-exp="${a.expires}"></span><br><br>
+        <span class="timer" data-exp="${a.expires}" data-ref="${historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : ""}"></span><br><br>
 
         <b>Description:</b><br>
         ${a.description || "No description provided."}<br><br>
@@ -1056,14 +1967,37 @@ function clearSearch(){
 }
 
 // ===== RADAR =====
-function createRadarLayer(){
+function createRadarLayer(timestamp=Date.now()){
     return L.tileLayer(
-        "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png?_t="+Date.now(),
+        RADAR_TILE_URL+"?_t="+timestamp,
         {opacity: radarOpacity.value/100}
     );
 }
 
+function createHistoryRadarLayer(wmsTime){
+    return L.tileLayer.wms(HISTORY_RADAR_WMS_URL,{
+        layers:HISTORY_RADAR_WMS_LAYER,
+        format:"image/png",
+        transparent:true,
+        version:"1.1.1",
+        time:wmsTime,
+        opacity:radarOpacity.value/100,
+        attribution:"IEM NEXRAD WMS-T"
+    });
+}
+
 function toggleRadar(){
+    if(historyModeActive){
+        if(isHistoryPlaybackRunning()){
+            if(radarLayer) map.removeLayer(radarLayer);
+            radarLayer=null;
+            return;
+        }
+        const metadata=getCurrentHistoryFrameMetadata();
+        if(metadata) applyHistoryRadar(metadata);
+        return;
+    }
+
     if(radarToggle.checked){
         reloadRadar();
     } else if(radarLayer){
@@ -1073,8 +2007,9 @@ function toggleRadar(){
 
 function reloadRadar(){
     nextRadarUpdate = Date.now() + RADAR_UPDATE_INTERVAL;
+    currentRadarTimestamp = Date.now();
     if(radarLayer) map.removeLayer(radarLayer);
-    radarLayer=createRadarLayer();
+    radarLayer=createRadarLayer(currentRadarTimestamp);
     if(radarToggle.checked) radarLayer.addTo(map);
 }
 
@@ -1279,12 +2214,44 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('historyPanel').classList.contains('open')) {
+        closeHistoryPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('eventFilterOverlay').classList.contains('open')) {
         closeEventFilterPopup();
         return;
     }
 
-    if (e.key === 't' || e.key === 'T') {
+    if (document.getElementById('historyPanel').classList.contains('open') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if(e.key === 'n'){
+            e.preventDefault();
+            moveHistoryBy(getHistoryFramesPerStep());
+            return;
+        } else if(e.key === 'N'){
+            e.preventDefault();
+            moveHistoryBy(1);
+            return;
+        } else if(e.key === 'p'){
+            e.preventDefault();
+            moveHistoryBy(-getHistoryFramesPerStep());
+            return;
+        } else if(e.key === 'P'){
+            e.preventDefault();
+            moveHistoryBy(-1);
+            return;
+        }
+    }
+
+    if (e.key === 'h' || e.key === 'H') {
+        if(document.getElementById('historyPanel').classList.contains('open')){
+            closeHistoryPanel();
+        } else {
+            openHistoryPanel();
+        }
+        return;
+    } else if (e.key === 't' || e.key === 'T') {
         openEventFilterPopup();
         return;
     } else if (e.key === 'c' || e.key === 'C') {
