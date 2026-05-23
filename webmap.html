@@ -699,17 +699,14 @@ function getEventTitleCounties(title){
             const stateFips=String(feature.properties.STATE).padStart(2,'0');
             return {
                 fips,
+                sameCode:String(fips).padStart(5,'0'),
                 feature,
                 name:feature.properties.NAME || fips,
                 state:stateAbbreviations[stateFips] || stateFips
             };
         })
         .filter(Boolean)
-        .sort((a,b)=>
-            a.state.localeCompare(b.state) ||
-            a.name.localeCompare(b.name) ||
-            a.fips.localeCompare(b.fips)
-        );
+        .sort((a,b)=>a.sameCode.localeCompare(b.sameCode, undefined, { numeric:true }));
 }
 
 function cycleEventTitleCounty(title,direction){
@@ -1273,9 +1270,11 @@ document.addEventListener('keydown', (e) => {
     if (storedViewDigit && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         if (e.shiftKey) {
+            if (!e.repeat) {
+                storeMapView(storedViewDigit);
+            }
+        } else {
             restoreMapView(storedViewDigit);
-        } else if (!e.repeat) {
-            storeMapView(storedViewDigit);
         }
         return;
     }
