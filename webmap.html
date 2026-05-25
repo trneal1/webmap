@@ -386,6 +386,120 @@ body.history-active #historyMapBadges {
 #closeHistory:hover {
     background:#eee;
 }
+
+#setupPanel {
+    position:fixed;
+    top:72px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:2200;
+    display:none;
+    width:min(380px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+}
+
+#setupPanel.open {
+    display:block;
+}
+
+#setupHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#setupHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#closeSetup {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#setupBody {
+    display:grid;
+    gap:10px;
+    padding:10px;
+}
+
+#setupBody label {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+}
+
+#setupBody input[type="number"] {
+    width:90px;
+    font-size:12px;
+}
+
+#setupBody .coordinate-fields {
+    display:flex;
+    gap:6px;
+}
+
+#setupBody .coordinate-fields input[type="number"] {
+    width:82px;
+}
+
+#setupActions {
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+    padding-top:2px;
+}
+
+#setupActions button {
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+#setupActions button:hover,
+#closeSetup:hover {
+    background:#eee;
+}
+
+.state-label-icon {
+    color:#000;
+    font:bold 14px/1 Arial, sans-serif;
+    text-align:center;
+    text-shadow:
+        -2px -2px 0 #fff,
+        0 -2px 0 #fff,
+        2px -2px 0 #fff,
+        -2px 0 0 #fff,
+        2px 0 0 #fff,
+        -2px 2px 0 #fff,
+        0 2px 0 #fff,
+        2px 2px 0 #fff;
+    pointer-events:none;
+}
+
+.state-label-icon span {
+    display:block;
+}
+
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -417,6 +531,29 @@ body.history-active #historyMapBadges {
       <button type="button" onclick="closeEventFilterPopup()">Close</button>
     </div>
     <div id="eventFilterList"></div>
+  </div>
+</div>
+
+<div id="setupPanel" role="dialog" aria-modal="false" aria-labelledby="setupTitle">
+  <div id="setupHeader">
+    <h3 id="setupTitle">Setup</h3>
+    <button id="closeSetup" type="button" onclick="closeSetupPanel()" aria-label="Close setup" title="Close">&times;</button>
+  </div>
+  <div id="setupBody">
+    <label>Weather updates (min) <input id="weatherUpdateMinutes" type="number" min="0.1" step="0.1" value="1" onchange="applySetupSettings()"></label>
+    <label>Radar updates (min) <input id="radarUpdateMinutes" type="number" min="0.1" step="0.1" value="5" onchange="applySetupSettings()"></label>
+    <label>Record history <input id="historyRecordingToggle" type="checkbox" checked onchange="applySetupSettings()"></label>
+    <label>Weather updates per history frame <input id="historyFrameWeatherUpdates" type="number" min="1" max="1440" step="1" value="1" onchange="applySetupSettings()"></label>
+    <label>Label location
+      <span class="coordinate-fields">
+        <input id="labelLocationLat" type="number" min="-90" max="90" step="0.000001" placeholder="Lat" onchange="applySetupSettings()">
+        <input id="labelLocationLon" type="number" min="-180" max="180" step="0.000001" placeholder="Lon" onchange="applySetupSettings()">
+      </span>
+    </label>
+    <div id="setupActions">
+      <button type="button" onclick="resetSetupSettings()">Defaults</button>
+      <button type="button" onclick="closeSetupPanel()">Close</button>
+    </div>
   </div>
 </div>
 
@@ -551,6 +688,11 @@ let currentRadarTimestamp = Date.now();
 let countyOpacityValue = 0.7;
 let countyColorizationEnabled = true;
 let stateLayer;
+let stateLabelLayer = null;
+let stateLabelsVisible = false;
+let stateLabelMarkers = [];
+let currentLocationCrosshair = null;
+let labelLocationLatLng = null;
 let eventFocusLayer = null;
 let liveRawData = {};
 let historyFrames = [];
@@ -569,13 +711,20 @@ let currentSidebarSelection = null;
 // Timer tracking
 let nextWeatherUpdate = Date.now();
 let nextRadarUpdate = Date.now();
-const WEATHER_UPDATE_INTERVAL = 60000; // 60 seconds
-const RADAR_UPDATE_INTERVAL = 300000; // 300 seconds
+let weatherUpdateInterval = 60000; // 60 seconds
+let radarUpdateInterval = 300000; // 300 seconds
+let weatherRefreshTimer = null;
+let radarRefreshTimer = null;
+let historyRecordingEnabled = true;
+let historyFrameWeatherUpdates = 1;
+let weatherUpdatesSinceHistoryFrame = 0;
+const SETUP_SETTINGS_KEY = "nwsDashboardSetupSettings";
 const HISTORY_DB_NAME = "nwsDashboardHistory";
 const HISTORY_DB_VERSION = 2;
 const HISTORY_STORE_NAME = "snapshots";
 const RADAR_TILE_STORE_NAME = "radarTiles";
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const HISTORY_FRAME_DEDUP_MS = 60000;
 const RADAR_TILE_URL = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png";
 const HISTORY_RADAR_WMS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi";
 const HISTORY_RADAR_WMS_LAYER = "nexrad-n0r-wmst";
@@ -589,6 +738,19 @@ const stateAbbreviations = {
     "36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI",
     "45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA",
     "54":"WV","55":"WI","56":"WY"
+};
+
+const stateNameToAbbreviation = {
+    "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO",
+    "Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA",
+    "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS",
+    "Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA",
+    "Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT",
+    "Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM",
+    "New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK",
+    "Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC",
+    "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT",
+    "Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"
 };
 
 let filters = {
@@ -608,6 +770,8 @@ let isDraggingEventFilter=false;
 let eventFilterDragOffset={ x:0, y:0 };
 let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
+let isDraggingSetupPanel=false;
+let setupPanelDragOffset={ x:0, y:0 };
 
 // ===== DRAG RESIZE =====
 const resizer = document.getElementById('resizer');
@@ -691,6 +855,9 @@ window.addEventListener('resize',()=>{
     if(document.getElementById('historyPanel').classList.contains('open')){
         clampHistoryPanel();
     }
+    if(document.getElementById('setupPanel').classList.contains('open')){
+        clampSetupPanel();
+    }
 });
 
 // ===== HISTORY PANEL DRAG =====
@@ -744,6 +911,152 @@ document.addEventListener('mouseup',()=>{
     isDraggingHistoryPanel=false;
 });
 
+// ===== SETUP PANEL =====
+const setupPanel=document.getElementById('setupPanel');
+const setupHeader=document.getElementById('setupHeader');
+const weatherUpdateMinutes=document.getElementById('weatherUpdateMinutes');
+const radarUpdateMinutes=document.getElementById('radarUpdateMinutes');
+const historyRecordingToggle=document.getElementById('historyRecordingToggle');
+const historyFrameWeatherUpdatesInput=document.getElementById('historyFrameWeatherUpdates');
+const labelLocationLatInput=document.getElementById('labelLocationLat');
+const labelLocationLonInput=document.getElementById('labelLocationLon');
+
+function loadSetupSettings(){
+    try{
+        const settings=JSON.parse(localStorage.getItem(SETUP_SETTINGS_KEY)) || {};
+        weatherUpdateInterval=clampNumber(settings.weatherUpdateMinutes,0.1,1440,1) * 60000;
+        radarUpdateInterval=clampNumber(settings.radarUpdateMinutes,0.1,1440,5) * 60000;
+        historyRecordingEnabled=settings.historyRecordingEnabled !== false;
+        historyFrameWeatherUpdates=Math.round(clampNumber(settings.historyFrameWeatherUpdates,1,1440,1));
+        labelLocationLatLng=getValidLatLng(settings.labelLocationLat,settings.labelLocationLon);
+    }catch(error){
+        weatherUpdateInterval=60000;
+        radarUpdateInterval=300000;
+        historyRecordingEnabled=true;
+        historyFrameWeatherUpdates=1;
+        labelLocationLatLng=null;
+    }
+}
+
+function saveSetupSettings(){
+    localStorage.setItem(SETUP_SETTINGS_KEY,JSON.stringify({
+        weatherUpdateMinutes:weatherUpdateInterval / 60000,
+        radarUpdateMinutes:radarUpdateInterval / 60000,
+        historyRecordingEnabled,
+        historyFrameWeatherUpdates,
+        labelLocationLat:labelLocationLatLng ? labelLocationLatLng[0] : "",
+        labelLocationLon:labelLocationLatLng ? labelLocationLatLng[1] : ""
+    }));
+}
+
+function syncSetupControls(){
+    weatherUpdateMinutes.value=String(weatherUpdateInterval / 60000);
+    radarUpdateMinutes.value=String(radarUpdateInterval / 60000);
+    historyRecordingToggle.checked=historyRecordingEnabled;
+    historyFrameWeatherUpdatesInput.value=String(historyFrameWeatherUpdates);
+    labelLocationLatInput.value=labelLocationLatLng ? String(labelLocationLatLng[0]) : "";
+    labelLocationLonInput.value=labelLocationLatLng ? String(labelLocationLatLng[1]) : "";
+}
+
+function startWeatherRefreshTimer(){
+    if(weatherRefreshTimer) clearInterval(weatherRefreshTimer);
+    nextWeatherUpdate=Date.now() + weatherUpdateInterval;
+    weatherRefreshTimer=setInterval(refresh,weatherUpdateInterval);
+}
+
+function startRadarRefreshTimer(){
+    if(radarRefreshTimer) clearInterval(radarRefreshTimer);
+    nextRadarUpdate=Date.now() + radarUpdateInterval;
+    radarRefreshTimer=setInterval(()=>{
+        if(radarToggle.checked) reloadRadar();
+    },radarUpdateInterval);
+}
+
+function applySetupSettings(){
+    weatherUpdateInterval=clampNumber(weatherUpdateMinutes.value,0.1,1440,1) * 60000;
+    radarUpdateInterval=clampNumber(radarUpdateMinutes.value,0.1,1440,5) * 60000;
+    historyRecordingEnabled=historyRecordingToggle.checked;
+    historyFrameWeatherUpdates=Math.round(clampNumber(historyFrameWeatherUpdatesInput.value,1,1440,1));
+    labelLocationLatLng=getValidLatLng(labelLocationLatInput.value,labelLocationLonInput.value);
+    weatherUpdatesSinceHistoryFrame=0;
+    syncSetupControls();
+    saveSetupSettings();
+    startWeatherRefreshTimer();
+    startRadarRefreshTimer();
+    if(stateLabelsVisible) updateCurrentLocationMarker();
+}
+
+function resetSetupSettings(){
+    weatherUpdateInterval=60000;
+    radarUpdateInterval=300000;
+    historyRecordingEnabled=true;
+    historyFrameWeatherUpdates=1;
+    labelLocationLatLng=null;
+    weatherUpdatesSinceHistoryFrame=0;
+    syncSetupControls();
+    saveSetupSettings();
+    startWeatherRefreshTimer();
+    startRadarRefreshTimer();
+    if(stateLabelsVisible) updateCurrentLocationMarker();
+}
+
+function openSetupPanel(){
+    setupPanel.classList.add('open');
+    syncSetupControls();
+}
+
+function closeSetupPanel(){
+    setupPanel.classList.remove('open');
+}
+
+function clampSetupPanel(){
+    const rect=setupPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    setupPanel.style.left=left+"px";
+    setupPanel.style.top=top+"px";
+    setupPanel.style.transform="none";
+}
+
+setupHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=setupPanel.getBoundingClientRect();
+    setupPanel.style.left=rect.left+"px";
+    setupPanel.style.top=rect.top+"px";
+    setupPanel.style.transform="none";
+
+    isDraggingSetupPanel=true;
+    setupPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingSetupPanel) return;
+
+    const rect=setupPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-setupPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-setupPanelDragOffset.y,0),maxTop);
+
+    setupPanel.style.left=left+"px";
+    setupPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingSetupPanel=false;
+});
+
+loadSetupSettings();
+syncSetupControls();
+
 // ===== TIMER =====
 setInterval(()=>{
     document.querySelectorAll(".timer").forEach(el=>{
@@ -773,6 +1086,20 @@ function getFips(f){ return (f.id || (f.properties.STATE + f.properties.COUNTY))
 
 function getActiveTimestamp(){
     return historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : Date.now();
+}
+
+function clampNumber(value,min,max,fallback){
+    const number=Number(value);
+    if(!Number.isFinite(number)) return fallback;
+    return Math.min(Math.max(number,min),max);
+}
+
+function getValidLatLng(latValue,lonValue){
+    const lat=Number(latValue);
+    const lon=Number(lonValue);
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if(lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return [lat,lon];
 }
 
 function hashAlertId(str){
@@ -1039,7 +1366,7 @@ async function loadHistoryFrame(timestamp){
 function normalizeHistoryFrames(frames){
     const framesByMinute=new Map();
     frames.forEach(frame=>{
-        const minute=Math.floor(frame.timestamp / WEATHER_UPDATE_INTERVAL);
+        const minute=Math.floor(frame.timestamp / HISTORY_FRAME_DEDUP_MS);
         const existing=framesByMinute.get(minute);
         if(!existing || (frame.kind === "weather" && existing.kind !== "weather")){
             framesByMinute.set(minute,frame);
@@ -1658,11 +1985,19 @@ function processAlerts(data){
 }
 
 async function refresh(){
-    nextWeatherUpdate = Date.now() + WEATHER_UPDATE_INTERVAL;
+    nextWeatherUpdate = Date.now() + weatherUpdateInterval;
     const r=await fetch(ALERTS_URL);
     const d=await r.json();
     liveRawData=processAlerts(d);
-    await saveHistorySnapshot(liveRawData);
+    if(historyRecordingEnabled){
+        weatherUpdatesSinceHistoryFrame++;
+    } else {
+        weatherUpdatesSinceHistoryFrame=0;
+    }
+    if(historyRecordingEnabled && weatherUpdatesSinceHistoryFrame >= historyFrameWeatherUpdates){
+        weatherUpdatesSinceHistoryFrame=0;
+        await saveHistorySnapshot(liveRawData);
+    }
 
     if(!historyModeActive){
         rawData=liveRawData;
@@ -1792,6 +2127,146 @@ function updateFocusedEventCountyHighlight(){
     eventFocusLayer.bringToFront();
 }
 
+function getStateLabelText(feature){
+    const props = feature.properties || {};
+    const fips = String(props.STATE || props.STATEFP || feature.id || "").padStart(2,'0');
+    if(stateAbbreviations[fips]) return stateAbbreviations[fips];
+
+    const name = props.name || props.NAME || props.State || props.STATE_NAME;
+    return stateNameToAbbreviation[name] || "";
+}
+
+function buildStateLabelLayer(states){
+    stateLabelMarkers = [];
+    states.features.forEach(feature => {
+        const text = getStateLabelText(feature);
+        if(!text) return;
+
+        const center = L.geoJson(feature).getBounds().getCenter();
+        const marker = L.marker(center, {
+            interactive:false,
+            keyboard:false,
+            stateLabelText:text,
+            icon:createStateLabelIcon(text)
+        });
+        stateLabelMarkers.push(marker);
+    });
+    stateLabelLayer = L.layerGroup(stateLabelMarkers);
+}
+
+function getStateLabelFontSize(){
+    const zoom = map.getZoom();
+    return Math.round(Math.min(28, Math.max(14, 8 + zoom * 2)));
+}
+
+function getCurrentLocationCrossSize(){
+    const zoom = map.getZoom();
+    return Math.round(Math.min(54, Math.max(24, 12 + zoom * 4)));
+}
+
+function createStateLabelIcon(text){
+    const fontSize = getStateLabelFontSize();
+    const width = Math.round(fontSize * 2.6);
+    const height = Math.round(fontSize * 1.5);
+
+    return L.divIcon({
+        className:"state-label-icon",
+        html:`<span style="font-size:${fontSize}px;">${text}</span>`,
+        iconSize:[width,height],
+        iconAnchor:[width / 2,height / 2]
+    });
+}
+
+function removeCurrentLocationCrosshair(){
+    if(currentLocationCrosshair){
+        map.removeLayer(currentLocationCrosshair);
+        currentLocationCrosshair=null;
+    }
+}
+
+function createCurrentLocationCrosshair(){
+    const center = L.latLng(labelLocationLatLng[0],labelLocationLatLng[1]);
+    const size = getCurrentLocationCrossSize();
+    const point = map.latLngToLayerPoint(center);
+    const horizontalStart = map.layerPointToLatLng(L.point(point.x - size / 2,point.y));
+    const horizontalEnd = map.layerPointToLatLng(L.point(point.x + size / 2,point.y));
+    const verticalStart = map.layerPointToLatLng(L.point(point.x,point.y - size / 2));
+    const verticalEnd = map.layerPointToLatLng(L.point(point.x,point.y + size / 2));
+
+    const redWeight=Math.max(3,Math.round(size * 0.12));
+    const whiteWeight=redWeight + 4;
+
+    return L.featureGroup([
+        L.polyline([horizontalStart,horizontalEnd],{
+            color:"#fff",
+            weight:whiteWeight,
+            opacity:1,
+            interactive:false
+        }),
+        L.polyline([verticalStart,verticalEnd],{
+            color:"#fff",
+            weight:whiteWeight,
+            opacity:1,
+            interactive:false
+        }),
+        L.polyline([horizontalStart,horizontalEnd],{
+            color:"#d00000",
+            weight:redWeight,
+            opacity:1,
+            interactive:false
+        }),
+        L.polyline([verticalStart,verticalEnd],{
+            color:"#d00000",
+            weight:redWeight,
+            opacity:1,
+            interactive:false
+        })
+    ]);
+}
+
+function updateCurrentLocationMarker(){
+    if(!stateLabelsVisible || !labelLocationLatLng){
+        removeCurrentLocationCrosshair();
+        return;
+    }
+
+    removeCurrentLocationCrosshair();
+    currentLocationCrosshair=createCurrentLocationCrosshair().addTo(map);
+    currentLocationCrosshair.bringToFront();
+}
+
+function startCurrentLocationCross(){
+    updateCurrentLocationMarker();
+}
+
+function stopCurrentLocationCross(){
+    removeCurrentLocationCrosshair();
+}
+
+function updateStateLabelScale(){
+    if(!stateLabelsVisible || !stateLabelLayer) return;
+
+    stateLabelMarkers.forEach(marker => {
+        const text = marker.options.stateLabelText;
+        if(!text) return;
+        marker.setIcon(createStateLabelIcon(text));
+    });
+    updateCurrentLocationMarker();
+}
+
+function toggleStateLabels(){
+    stateLabelsVisible = !stateLabelsVisible;
+
+    if(stateLabelsVisible){
+        if(stateLabelLayer) stateLabelLayer.addTo(map);
+        updateStateLabelScale();
+        startCurrentLocationCross();
+    } else {
+        if(stateLabelLayer) map.removeLayer(stateLabelLayer);
+        stopCurrentLocationCross();
+    }
+}
+
 function getFeatureStyle(f){
     if(!countyColorizationEnabled){
         return {fill:false,color:"#000",weight:0.4};
@@ -1880,6 +2355,7 @@ function updateStateBorderWeight(){
     const zoom = map.getZoom();
     const weight = Math.max(1.5, zoom * 0.5);
     stateLayer.setStyle({ weight: weight });
+    updateStateLabelScale();
 }
 
 map.on("zoomend", updateStateBorderWeight);
@@ -2006,7 +2482,7 @@ function toggleRadar(){
 }
 
 function reloadRadar(){
-    nextRadarUpdate = Date.now() + RADAR_UPDATE_INTERVAL;
+    nextRadarUpdate = Date.now() + radarUpdateInterval;
     currentRadarTimestamp = Date.now();
     if(radarLayer) map.removeLayer(radarLayer);
     radarLayer=createRadarLayer(currentRadarTimestamp);
@@ -2050,7 +2526,7 @@ fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties
         countyFeatureByFips[getFips(feature)]=feature;
     });
     refresh();
-    setInterval(refresh,60000);
+    startWeatherRefreshTimer();
 });
 
 fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
@@ -2061,12 +2537,15 @@ fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geo
         interactive:false
     }).addTo(map);
 
+    buildStateLabelLayer(states);
+    if(stateLabelsVisible){
+        stateLabelLayer.addTo(map);
+        startCurrentLocationCross();
+    }
     updateStateBorderWeight();
 });
 
-setInterval(()=>{
-    if(radarToggle.checked) reloadRadar();
-},300000);
+startRadarRefreshTimer();
 
 // Prevent map keyboard shortcuts when typing in sidebar
 // Allow actual text input fields to receive characters.
@@ -2219,6 +2698,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('setupPanel').classList.contains('open')) {
+        closeSetupPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('eventFilterOverlay').classList.contains('open')) {
         closeEventFilterPopup();
         return;
@@ -2244,7 +2728,14 @@ document.addEventListener('keydown', (e) => {
         }
     }
 
-    if (e.key === 'h' || e.key === 'H') {
+    if (e.key === 's' || e.key === 'S') {
+        if(document.getElementById('setupPanel').classList.contains('open')){
+            closeSetupPanel();
+        } else {
+            openSetupPanel();
+        }
+        return;
+    } else if (e.key === 'h' || e.key === 'H') {
         if(document.getElementById('historyPanel').classList.contains('open')){
             closeHistoryPanel();
         } else {
@@ -2270,7 +2761,12 @@ document.addEventListener('keydown', (e) => {
         mapTypeSelector.value = newType;
         switchMapType();
         return;
-    } else if (e.key === 'i' && !zoomInInterval) {
+    } else if (e.key === 'l' || e.key === 'L') {
+        toggleStateLabels();
+        return;
+    } else if (e.key === 'i' || e.key === 'I') {
+        if(zoomInInterval) return;
+        e.preventDefault();
         // Zoom immediately on key press
         const currentZoom = map.getZoom();
         const maxZoom = map.getMaxZoom();
@@ -2286,7 +2782,9 @@ document.addEventListener('keydown', (e) => {
                 map.setZoom(currentZoom + 1.0);
             }
         }, 100);
-    } else if (e.key === 'o' && !zoomOutInterval) {
+    } else if (e.key === 'o' || e.key === 'O') {
+        if(zoomOutInterval) return;
+        e.preventDefault();
         // Zoom immediately on key press
         const currentZoom = map.getZoom();
         const minZoom = map.getMinZoom();
@@ -2308,10 +2806,10 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => {
     if (shouldIgnoreShortcutEvent(e)) return;
 
-    if (e.key === 'i' && zoomInInterval) {
+    if ((e.key === 'i' || e.key === 'I') && zoomInInterval) {
         clearInterval(zoomInInterval);
         zoomInInterval = null;
-    } else if (e.key === 'o' && zoomOutInterval) {
+    } else if ((e.key === 'o' || e.key === 'O') && zoomOutInterval) {
         clearInterval(zoomOutInterval);
         zoomOutInterval = null;
     }
