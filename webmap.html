@@ -524,6 +524,105 @@ body.history-active #historyMapBadges {
     background:#eee;
 }
 
+#shortcutHelpPanel {
+    position:fixed;
+    top:88px;
+    right:18px;
+    z-index:2250;
+    display:none;
+    width:min(440px, calc(100vw - 28px));
+    max-height:calc(100vh - 116px);
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+    overflow:hidden;
+}
+
+#shortcutHelpPanel.open {
+    display:block;
+}
+
+#shortcutHelpHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#shortcutHelpHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#closeShortcutHelp {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#shortcutHelpBody {
+    overflow:auto;
+    max-height:calc(100vh - 162px);
+    padding:10px;
+}
+
+.shortcut-section {
+    margin-bottom:12px;
+}
+
+.shortcut-section:last-child {
+    margin-bottom:0;
+}
+
+.shortcut-section h4 {
+    margin:0 0 6px;
+    font-size:12px;
+    text-transform:uppercase;
+}
+
+.shortcut-grid {
+    display:grid;
+    grid-template-columns:max-content 1fr;
+    gap:5px 12px;
+    align-items:start;
+}
+
+.shortcut-grid kbd {
+    border:1px solid #999;
+    border-bottom-color:#555;
+    border-radius:3px;
+    background:#f7f7f7;
+    box-shadow:inset 0 -1px 0 rgba(0,0,0,0.12);
+    font:11px/1.3 monospace;
+    padding:1px 5px;
+    white-space:nowrap;
+}
+
+#shortcutHelpButton {
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:12px;
+    padding:5px 8px;
+}
+
+#shortcutHelpButton:hover,
+#closeShortcutHelp:hover {
+    background:#eee;
+}
+
 #plotPanel {
     position:fixed;
     top:96px;
@@ -772,6 +871,54 @@ body.history-active #historyMapBadges {
       <button type="button" onclick="resetSetupSettings()">Defaults</button>
       <button type="button" onclick="closeSetupPanel()">Close</button>
     </div>
+</div>
+</div>
+
+<div id="shortcutHelpPanel" role="dialog" aria-modal="false" aria-labelledby="shortcutHelpTitle">
+  <div id="shortcutHelpHeader">
+    <h3 id="shortcutHelpTitle">Keyboard Shortcuts</h3>
+    <button id="closeShortcutHelp" type="button" onclick="closeShortcutHelpPanel()" aria-label="Close keyboard shortcuts" title="Close">&times;</button>
+  </div>
+  <div id="shortcutHelpBody">
+    <div class="shortcut-section">
+      <h4>Panels</h4>
+      <div class="shortcut-grid">
+        <kbd>?</kbd><span>Keyboard shortcuts</span>
+        <kbd>S</kbd><span>Setup</span>
+        <kbd>H</kbd><span>History playback</span>
+        <kbd>G</kbd><span>Event plot</span>
+        <kbd>T</kbd><span>Event title filter</span>
+        <kbd>Esc</kbd><span>Close the active floating panel</span>
+      </div>
+    </div>
+    <div class="shortcut-section">
+      <h4>Map</h4>
+      <div class="shortcut-grid">
+        <kbd>I</kbd><span>Zoom in while held</span>
+        <kbd>O</kbd><span>Zoom out while held</span>
+        <kbd>R</kbd><span>Radar on/off</span>
+        <kbd>M</kbd><span>Switch map type</span>
+        <kbd>C</kbd><span>County colorization on/off</span>
+        <kbd>L</kbd><span>State labels/location marker on/off</span>
+        <kbd>Right click</kbd><span>Pan map to clicked point</span>
+      </div>
+    </div>
+    <div class="shortcut-section">
+      <h4>Saved Views</h4>
+      <div class="shortcut-grid">
+        <kbd>1-9</kbd><span>Restore saved map view</span>
+        <kbd>Shift + 1-9</kbd><span>Save current map view</span>
+      </div>
+    </div>
+    <div class="shortcut-section">
+      <h4>History</h4>
+      <div class="shortcut-grid">
+        <kbd>N</kbd><span>Next single frame</span>
+        <kbd>n</kbd><span>Next frame step</span>
+        <kbd>P</kbd><span>Previous single frame</span>
+        <kbd>p</kbd><span>Previous frame step</span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -791,6 +938,7 @@ body.history-active #historyMapBadges {
       <label>Event titles <select id="plotEventTitles" multiple onchange="refreshEventPlot()"></select></label>
       <button type="button" onclick="selectAllPlotEventTitles()">All</button>
       <button type="button" onclick="selectNoPlotEventTitles()">None</button>
+      <button type="button" onclick="reloadPlotHistory()">Update</button>
       <button type="button" onclick="refreshEventPlot()">Plot</button>
       <button type="button" onclick="gotoPlotCursorHistoryFrame()">Goto</button>
       <button type="button" onclick="closePlotPanel()">Close</button>
@@ -825,6 +973,7 @@ body.history-active #historyMapBadges {
       <button type="button" onclick="playHistory(1)" title="Play">&gt;</button>
       <button type="button" onclick="stopHistoryPlayback()" title="Stop">Stop</button>
       <button type="button" onclick="fastForwardHistory()" title="Fast forward">&gt;|</button>
+      <button type="button" onclick="reloadHistoryPanel()" title="Load newer history frames">Update</button>
       <button type="button" onclick="searchNextTornadoWarningFrame()" title="Find next tornado warning">Tornado Search</button>
       <button type="button" onclick="clearHistorySnapshots()" title="Clear saved history">Clear History</button>
       <button type="button" onclick="closeHistoryPanel()" title="Return to live">Live</button>
@@ -846,7 +995,10 @@ body.history-active #historyMapBadges {
 
 <div id="sidebarHeader">
 <h3>Filters</h3>
+<span>
+<button id="shortcutHelpButton" type="button" onclick="toggleShortcutHelpPanel()" title="Keyboard shortcuts">Help</button>
 <button id="closeSidebar" type="button" onclick="closeSidebar()" aria-label="Close sidebar" title="Close sidebar">&times;</button>
+</span>
 </div>
 
 Severity:
@@ -1027,9 +1179,12 @@ let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
 let isDraggingSetupPanel=false;
 let setupPanelDragOffset={ x:0, y:0 };
+let isDraggingShortcutHelpPanel=false;
+let shortcutHelpPanelDragOffset={ x:0, y:0 };
 let isDraggingPlotPanel=false;
 let plotPanelDragOffset={ x:0, y:0 };
 let plotFrames=[];
+let plotTitleCounts=new Map();
 let plotPanelLoading=false;
 let plotLoadToken=0;
 let plotCursorTimestamp=null;
@@ -1433,6 +1588,73 @@ document.addEventListener('mouseup',()=>{
     isDraggingSetupPanel=false;
 });
 
+// ===== SHORTCUT HELP PANEL =====
+const shortcutHelpPanel=document.getElementById('shortcutHelpPanel');
+const shortcutHelpHeader=document.getElementById('shortcutHelpHeader');
+
+function openShortcutHelpPanel(){
+    shortcutHelpPanel.classList.add('open');
+    clampShortcutHelpPanel();
+}
+
+function closeShortcutHelpPanel(){
+    shortcutHelpPanel.classList.remove('open');
+}
+
+function toggleShortcutHelpPanel(){
+    if(shortcutHelpPanel.classList.contains('open')){
+        closeShortcutHelpPanel();
+    } else {
+        openShortcutHelpPanel();
+    }
+}
+
+function clampShortcutHelpPanel(){
+    const rect=shortcutHelpPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    shortcutHelpPanel.style.left=left+"px";
+    shortcutHelpPanel.style.top=top+"px";
+    shortcutHelpPanel.style.right="auto";
+}
+
+shortcutHelpHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=shortcutHelpPanel.getBoundingClientRect();
+    shortcutHelpPanel.style.left=rect.left+"px";
+    shortcutHelpPanel.style.top=rect.top+"px";
+    shortcutHelpPanel.style.right="auto";
+
+    isDraggingShortcutHelpPanel=true;
+    shortcutHelpPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingShortcutHelpPanel) return;
+
+    const rect=shortcutHelpPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-shortcutHelpPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-shortcutHelpPanelDragOffset.y,0),maxTop);
+
+    shortcutHelpPanel.style.left=left+"px";
+    shortcutHelpPanel.style.top=top+"px";
+    shortcutHelpPanel.style.right="auto";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingShortcutHelpPanel=false;
+});
+
 loadSetupSettings();
 syncSetupControls();
 
@@ -1754,17 +1976,24 @@ function normalizeHistoryFrames(frames){
     return [...framesByMinute.values()].sort((a,b)=>a.timestamp-b.timestamp);
 }
 
-async function loadHistorySnapshots(){
+async function loadHistorySnapshots(sinceTimestamp=null){
     try{
         let frames=[];
         const cutoff=Date.now() - HISTORY_RETENTION_MS;
+        const lowerBound=Number.isFinite(sinceTimestamp)
+            ? Math.max(cutoff,sinceTimestamp + 1)
+            : cutoff;
         await withHistoryStore("readonly",(store)=>{
-            const request=store.openCursor(IDBKeyRange.lowerBound(cutoff));
+            const request=store.openCursor(IDBKeyRange.lowerBound(lowerBound));
             request.onsuccess=()=>{
                 const cursor=request.result;
                 if(!cursor) return;
                 const frame=cursor.value;
                 if(frame && Number.isFinite(frame.timestamp) && frame.alerts && typeof frame.alerts === "object"){
+                    if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp){
+                        cursor.continue();
+                        return;
+                    }
                     frames.push(createHistoryFrameMetadata(frame));
                 }
                 cursor.continue();
@@ -1777,25 +2006,38 @@ async function loadHistorySnapshots(){
     }
 }
 
-async function loadPlotHistoryFrames(){
+function getPlotTitleCountsFromFrames(frames){
+    const titleCounts=new Map();
+    frames.forEach(frame=>{
+        Object.entries(frame.eventTitleCounts || {}).forEach(([title,count])=>{
+            titleCounts.set(title,(titleCounts.get(title) || 0) + count);
+        });
+    });
+    return titleCounts;
+}
+
+async function loadPlotHistoryFrames(sinceTimestamp=null){
     let directError=null;
     try{
         const frames=[];
-        const titleCounts=new Map();
         const cutoff=Date.now() - HISTORY_RETENTION_MS;
+        const lowerBound=Number.isFinite(sinceTimestamp)
+            ? Math.max(cutoff,sinceTimestamp + 1)
+            : cutoff;
 
         await withHistoryStore("readonly",(store)=>{
-            const request=store.openCursor(IDBKeyRange.lowerBound(cutoff));
+            const request=store.openCursor(IDBKeyRange.lowerBound(lowerBound));
             request.onsuccess=()=>{
                 const cursor=request.result;
                 if(!cursor) return;
                 const frame=cursor.value;
                 try{
                     if(frame && Number.isFinite(frame.timestamp) && frame.alerts && typeof frame.alerts === "object"){
+                        if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp){
+                            cursor.continue();
+                            return;
+                        }
                         const eventTitleCounts=getHistoryFrameEventTitleCounts(frame);
-                        Object.keys(eventTitleCounts).forEach(title=>{
-                            titleCounts.set(title,(titleCounts.get(title) || 0) + eventTitleCounts[title]);
-                        });
                         frames.push({
                             timestamp:frame.timestamp,
                             eventTitleCounts
@@ -1808,9 +2050,10 @@ async function loadPlotHistoryFrames(){
             };
         });
 
+        const normalizedFrames=normalizeHistoryFrames(frames);
         return {
-            frames:normalizeHistoryFrames(frames),
-            titleCounts
+            frames:normalizedFrames,
+            titleCounts:getPlotTitleCountsFromFrames(normalizedFrames)
         };
     }catch(error){
         directError=error;
@@ -1818,7 +2061,7 @@ async function loadPlotHistoryFrames(){
     }
 
     try{
-        return await loadPlotHistoryFramesFromMetadata();
+        return await loadPlotHistoryFramesFromMetadata(sinceTimestamp);
     }catch(error){
         console.warn("Unable to load plot history fallback",error);
         if(directError) console.warn("Original plot history error",directError);
@@ -1829,19 +2072,16 @@ async function loadPlotHistoryFrames(){
     }
 }
 
-async function loadPlotHistoryFramesFromMetadata(){
-    const metadata=await loadHistorySnapshots();
+async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
+    const metadata=await loadHistorySnapshots(sinceTimestamp);
     const frames=[];
-    const titleCounts=new Map();
 
     for(const frameMetadata of metadata){
         try{
+            if(Number.isFinite(sinceTimestamp) && frameMetadata.timestamp <= sinceTimestamp) continue;
             const frame=await loadHistoryFrame(frameMetadata.timestamp);
             if(!frame) continue;
             const eventTitleCounts=getHistoryFrameEventTitleCounts(frame);
-            Object.keys(eventTitleCounts).forEach(title=>{
-                titleCounts.set(title,(titleCounts.get(title) || 0) + eventTitleCounts[title]);
-            });
             frames.push({
                 timestamp:frame.timestamp,
                 eventTitleCounts
@@ -1851,9 +2091,10 @@ async function loadPlotHistoryFramesFromMetadata(){
         }
     }
 
+    const normalizedFrames=normalizeHistoryFrames(frames);
     return {
-        frames:normalizeHistoryFrames(frames),
-        titleCounts
+        frames:normalizedFrames,
+        titleCounts:getPlotTitleCountsFromFrames(normalizedFrames)
     };
 }
 
@@ -2256,16 +2497,81 @@ function populatePlotEventTitleOptions(titleCounts){
     }
     const titles=[...titleCounts.keys()].sort((a,b)=>a.localeCompare(b));
     const currentSelection=new Set(getSelectedPlotEventTitles());
+    const hadOptions=plotEventTitles.options.length;
+    const allExistingSelected=hadOptions > 0 && currentSelection.size === hadOptions;
     const filterSelection=filters.eventTitleMode === "selected" ? new Set(filters.eventTitles) : null;
 
     plotEventTitles.innerHTML=titles.map(title=>{
         const selected=currentSelection.size
-            ? currentSelection.has(title)
+            ? currentSelection.has(title) || allExistingSelected
             : filterSelection
                 ? filterSelection.has(title)
                 : true;
         return `<option value="${escapeHtml(title)}" ${selected ? "selected" : ""}>${escapeHtml(title)} (${titleCounts.get(title)})</option>`;
     }).join("");
+}
+
+function shouldAutoExtendPlotStop(previousLatestTimestamp){
+    if(!plotStop.value) return true;
+    return Number.isFinite(previousLatestTimestamp) && plotStop.value === formatDateTimeLocal(previousLatestTimestamp);
+}
+
+function applyPlotHistory(plotHistory,shouldExtendStop){
+    plotFrames=Array.isArray(plotHistory.frames) ? plotHistory.frames : [];
+    plotTitleCounts=plotHistory.titleCounts instanceof Map
+        ? plotHistory.titleCounts
+        : getPlotTitleCountsFromFrames(plotFrames);
+    if(plotFrames.length){
+        if(!plotStart.value) plotStart.value=formatDateTimeLocal(plotFrames[0].timestamp);
+        if(shouldExtendStop) plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
+    }
+    populatePlotEventTitleOptions(plotTitleCounts);
+    setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
+}
+
+function mergeIncrementalPlotHistory(plotHistory,shouldExtendStop){
+    const incomingFrames=Array.isArray(plotHistory.frames) ? plotHistory.frames : [];
+    const previousFrameCount=plotFrames.length;
+    if(incomingFrames.length){
+        plotFrames=normalizeHistoryFrames([...plotFrames,...incomingFrames]);
+        plotTitleCounts=getPlotTitleCountsFromFrames(plotFrames);
+        if(shouldExtendStop) plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
+        populatePlotEventTitleOptions(plotTitleCounts);
+    }
+    setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
+    return plotFrames.length - previousFrameCount;
+}
+
+async function reloadPlotHistory(){
+    if(plotPanelLoading) return;
+    if(!plotFrames.length){
+        await openPlotPanel();
+        return;
+    }
+    const loadToken=++plotLoadToken;
+    const previousLatestTimestamp=plotFrames[plotFrames.length - 1]?.timestamp;
+    const shouldExtendStop=shouldAutoExtendPlotStop(previousLatestTimestamp);
+
+    plotPanelLoading=true;
+    setPlotStatus("Updating...");
+    await nextPaint();
+
+    try{
+        const plotHistory=await loadPlotHistoryFrames(previousLatestTimestamp);
+        if(loadToken !== plotLoadToken) return;
+        plotPanelLoading=false;
+        const addedFrameCount=mergeIncrementalPlotHistory(plotHistory,shouldExtendStop);
+        drawEventPlot();
+        if(!addedFrameCount){
+            plotHint.textContent="No new history frames since the plot was loaded.";
+        }
+    }catch(error){
+        if(loadToken !== plotLoadToken) return;
+        plotPanelLoading=false;
+        setPlotStatus("Error");
+        clearEventPlot("Unable to load history");
+        console.warn("Unable to reload plot history",error);
+    }
 }
 
 async function openPlotPanel(){
@@ -2277,6 +2583,7 @@ async function openPlotPanel(){
     const loadToken=++plotLoadToken;
     plotPanelLoading=true;
     plotFrames=[];
+    plotTitleCounts=new Map();
     plotPanel.classList.remove('minimized');
     plotPanel.classList.add('open');
     minimizedPanels.plot=false;
@@ -2290,14 +2597,8 @@ async function openPlotPanel(){
         const plotHistory=await loadPlotHistoryFrames();
         if(loadToken !== plotLoadToken) return;
 
-        plotFrames=Array.isArray(plotHistory.frames) ? plotHistory.frames : [];
-        if(plotFrames.length){
-            if(!plotStart.value) plotStart.value=formatDateTimeLocal(plotFrames[0].timestamp);
-            if(!plotStop.value) plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
-        }
-        populatePlotEventTitleOptions(plotHistory.titleCounts);
         plotPanelLoading=false;
-        setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
+        applyPlotHistory(plotHistory,!plotStop.value);
         try{
             drawEventPlot();
         }catch(error){
@@ -2705,6 +3006,55 @@ function syncHistoryRangeInputs(){
     if(!historyFrames.length) return;
     const index=getBoundedHistoryIndex(historyPlaybackDirection);
     historySlider.value=index;
+}
+
+function shouldAutoExtendHistoryStop(previousLatestTimestamp){
+    if(!historyStop.value) return true;
+    return Number.isFinite(previousLatestTimestamp) && historyStop.value === formatDateTimeLocal(previousLatestTimestamp);
+}
+
+async function reloadHistoryPanel(){
+    if(historyPanelLoading) return;
+    if(!historyFrames.length){
+        await openHistoryPanel();
+        return;
+    }
+
+    const loadToken=++historyLoadToken;
+    const previousFrameCount=historyFrames.length;
+    const previousLatestTimestamp=historyFrames[historyFrames.length - 1]?.timestamp;
+    const shouldExtendStop=shouldAutoExtendHistoryStop(previousLatestTimestamp);
+    const wasAtLatest=(Number(historySlider.value) || 0) === historyFrames.length - 1;
+
+    stopHistoryPlayback();
+    historyPanelLoading=true;
+    updateHistoryPanelState();
+    document.getElementById('historyStatus').textContent="Updating...";
+    await nextPaint();
+
+    try{
+        const loadedFrames=await loadHistorySnapshots(previousLatestTimestamp);
+        if(loadToken !== historyLoadToken) return;
+
+        historyFrames=normalizeHistoryFrames([...historyFrames,...loadedFrames]);
+        historyPanelLoading=false;
+        if(shouldExtendStop && historyFrames.length){
+            historyStop.value=formatDateTimeLocal(historyFrames[historyFrames.length - 1].timestamp);
+        }
+        updateHistoryPanelState();
+
+        const addedFrameCount=historyFrames.length - previousFrameCount;
+        if(addedFrameCount && wasAtLatest){
+            await showHistoryFrame(historyFrames.length - 1);
+        } else if(!addedFrameCount){
+            document.getElementById('historyStatus').textContent=historyFrames.length + (historyFrames.length === 1 ? " frame" : " frames") + ", no new";
+        }
+    }catch(error){
+        if(loadToken !== historyLoadToken) return;
+        historyPanelLoading=false;
+        updateHistoryPanelState();
+        console.warn("Unable to update history panel",error);
+    }
 }
 
 async function openHistoryPanel(){
@@ -3679,7 +4029,7 @@ function isFormControl(element) {
 
 function shouldIgnoreShortcutEvent(e) {
     const target = e.target;
-    return isFormControl(target) || (target.closest && target.closest('#sidebar'));
+    return isFormControl(target) || (target.closest && target.closest('#sidebar') && !target.closest('#shortcutHelpButton'));
 }
 
 function loadStoredMapViews() {
@@ -3732,6 +4082,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('shortcutHelpPanel').classList.contains('open')) {
+        closeShortcutHelpPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('historyPanel').classList.contains('open')) {
         closeHistoryPanel();
         return;
@@ -3772,7 +4127,11 @@ document.addEventListener('keydown', (e) => {
         }
     }
 
-    if (e.key === 's' || e.key === 'S') {
+    if (e.key === '?') {
+        e.preventDefault();
+        toggleShortcutHelpPanel();
+        return;
+    } else if (e.key === 's' || e.key === 'S') {
         if(document.getElementById('setupPanel').classList.contains('open')){
             closeSetupPanel();
         } else {
