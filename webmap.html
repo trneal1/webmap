@@ -710,9 +710,14 @@ body.history-active #historyMapBadges {
     font-size:12px;
 }
 
-#plotControls select {
+#plotEventTitles {
     width:220px;
     min-height:92px;
+}
+
+#plotCountMode {
+    width:140px;
+    min-height:0;
 }
 
 #plotControls button {
@@ -935,6 +940,7 @@ body.history-active #historyMapBadges {
     <div id="plotControls">
       <label>Start <input id="plotStart" type="datetime-local" onchange="refreshEventPlot()"></label>
       <label>Stop <input id="plotStop" type="datetime-local" onchange="refreshEventPlot()"></label>
+      <label>Count <select id="plotCountMode" onchange="changePlotCountMode()"><option value="alerts">Active alerts</option><option value="counties">Impacted counties</option></select></label>
       <label>Event titles <select id="plotEventTitles" multiple onchange="refreshEventPlot()"></select></label>
       <button type="button" onclick="selectAllPlotEventTitles()">All</button>
       <button type="button" onclick="selectNoPlotEventTitles()">None</button>
@@ -1343,6 +1349,7 @@ const plotPanel=document.getElementById('plotPanel');
 const plotHeader=document.getElementById('plotHeader');
 const plotStart=document.getElementById('plotStart');
 const plotStop=document.getElementById('plotStop');
+const plotCountMode=document.getElementById('plotCountMode');
 const plotEventTitles=document.getElementById('plotEventTitles');
 const eventPlotCanvas=document.getElementById('eventPlotCanvas');
 const plotCursorTooltip=document.getElementById('plotCursorTooltip');
@@ -2006,10 +2013,23 @@ async function loadHistorySnapshots(sinceTimestamp=null){
     }
 }
 
-function getPlotTitleCountsFromFrames(frames){
+function getPlotFrameTitleCounts(frame,mode=getPlotCountMode()){
+    if(mode === "counties") return frame.countyTitleCounts || {};
+    return frame.alertTitleCounts || frame.eventTitleCounts || {};
+}
+
+function getPlotCountMode(){
+    return plotCountMode?.value === "counties" ? "counties" : "alerts";
+}
+
+function getPlotCountModeLabel(){
+    return getPlotCountMode() === "counties" ? "counties" : "alerts";
+}
+
+function getPlotTitleCountsFromFrames(frames,mode=getPlotCountMode()){
     const titleCounts=new Map();
     frames.forEach(frame=>{
-        Object.entries(frame.eventTitleCounts || {}).forEach(([title,count])=>{
+        Object.entries(getPlotFrameTitleCounts(frame,mode)).forEach(([title,count])=>{
             titleCounts.set(title,(titleCounts.get(title) || 0) + count);
         });
     });
@@ -2037,10 +2057,11 @@ async function loadPlotHistoryFrames(sinceTimestamp=null){
                             cursor.continue();
                             return;
                         }
-                        const eventTitleCounts=getHistoryFrameEventTitleCounts(frame);
+                        const plotCounts=getHistoryFramePlotCounts(frame);
                         frames.push({
                             timestamp:frame.timestamp,
-                            eventTitleCounts
+                            alertTitleCounts:plotCounts.alertTitleCounts,
+                            countyTitleCounts:plotCounts.countyTitleCounts
                         });
                     }
                 }catch(error){
@@ -2081,10 +2102,11 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
             if(Number.isFinite(sinceTimestamp) && frameMetadata.timestamp <= sinceTimestamp) continue;
             const frame=await loadHistoryFrame(frameMetadata.timestamp);
             if(!frame) continue;
-            const eventTitleCounts=getHistoryFrameEventTitleCounts(frame);
+            const plotCounts=getHistoryFramePlotCounts(frame);
             frames.push({
                 timestamp:frame.timestamp,
-                eventTitleCounts
+                alertTitleCounts:plotCounts.alertTitleCounts,
+                countyTitleCounts:plotCounts.countyTitleCounts
             });
         }catch(error){
             console.warn("Unable to load plot frame from metadata",frameMetadata?.timestamp,error);
@@ -2098,22 +2120,32 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
     };
 }
 
-function getHistoryFrameEventTitleCounts(frame){
-    const counts={};
+function getHistoryFramePlotCounts(frame){
+    const alertTitleCounts={};
+    const countyTitleCounts={};
     const seenByTitle={};
-    Object.values(frame?.alerts || {}).forEach(countyAlerts=>{
+    Object.entries(frame?.alerts || {}).forEach(([fips,countyAlerts])=>{
         if(!Array.isArray(countyAlerts)) return;
+        const countyTitles=new Set();
         countyAlerts.forEach(alert=>{
             if(!alert || typeof alert !== "object") return;
-        const title=alert.event || "Untitled";
-        const id=alert.id || [title,alert.sent,alert.expires,alert.headline].join("|");
-        if(!seenByTitle[title]) seenByTitle[title]=new Set();
-        if(seenByTitle[title].has(id)) return;
-        seenByTitle[title].add(id);
-        counts[title]=(counts[title] || 0) + 1;
+            const title=alert.event || "Untitled";
+            const id=alert.id || [title,alert.sent,alert.expires,alert.headline].join("|");
+            countyTitles.add(title);
+            if(!seenByTitle[title]) seenByTitle[title]=new Set();
+            if(seenByTitle[title].has(id)) return;
+            seenByTitle[title].add(id);
+            alertTitleCounts[title]=(alertTitleCounts[title] || 0) + 1;
+        });
+        countyTitles.forEach(title=>{
+            countyTitleCounts[title]=(countyTitleCounts[title] || 0) + 1;
         });
     });
-    return counts;
+    return { alertTitleCounts, countyTitleCounts };
+}
+
+function getHistoryFrameEventTitleCounts(frame){
+    return getHistoryFramePlotCounts(frame).alertTitleCounts;
 }
 
 function getSelectedPlotEventTitles(){
@@ -2149,6 +2181,7 @@ function getPlotRange(){
 function buildPlotSeriesByTitle(){
     const titles=getSelectedPlotEventTitles();
     const range=getPlotRange();
+    const mode=getPlotCountMode();
 
     return titles.map(title=>{
         return {
@@ -2157,7 +2190,7 @@ function buildPlotSeriesByTitle(){
                 .filter(frame=>frame.timestamp >= range.start && frame.timestamp <= range.stop)
                 .map(frame=>({
                     timestamp:frame.timestamp,
-                    value:(frame.eventTitleCounts || {})[title] || 0
+                    value:getPlotFrameTitleCounts(frame,mode)[title] || 0
                 }))
         };
     });
@@ -2409,7 +2442,7 @@ function drawPlotAxes(context,width,height,margin,seriesByTitle,maxValue,dpr,xSc
 function updatePlotSummary(seriesByTitle){
     const selectedTitles=getSelectedPlotEventTitles();
     const frameCount=getPlotFrameCount(seriesByTitle);
-    setPlotStatus(frameCount + " frames, latest total " + getLatestPlotTotal(seriesByTitle));
+    setPlotStatus(frameCount + " frames, latest " + getPlotCountModeLabel() + " " + getLatestPlotTotal(seriesByTitle));
     const cursorSummary=getPlotCursorSummary(seriesByTitle);
     plotHint.textContent=cursorSummary || (selectedTitles.length + " curve" + (selectedTitles.length === 1 ? "" : "s") + " selected");
 }
@@ -2489,6 +2522,12 @@ function drawEventPlot(){
 
 function refreshEventPlot(){
     drawEventPlot();
+}
+
+function changePlotCountMode(){
+    plotTitleCounts=getPlotTitleCountsFromFrames(plotFrames);
+    populatePlotEventTitleOptions(plotTitleCounts);
+    refreshEventPlot();
 }
 
 function populatePlotEventTitleOptions(titleCounts){
