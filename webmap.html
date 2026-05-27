@@ -524,6 +524,101 @@ body.history-active #historyMapBadges {
     background:#eee;
 }
 
+#precipPanel {
+    position:fixed;
+    top:72px;
+    left:18px;
+    z-index:2200;
+    display:none;
+    width:min(300px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+}
+
+#precipPanel.open {
+    display:block;
+}
+
+#precipHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#precipHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#closePrecip {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#precipBody {
+    display:grid;
+    gap:10px;
+    padding:10px;
+}
+
+#precipBody label {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+}
+
+#precipBody select {
+    font-size:12px;
+}
+
+#precipBody input[type="range"] {
+    width:150px;
+}
+
+#precipStatus {
+    color:#444;
+    font-family:monospace;
+}
+
+#precipButton {
+    position:fixed;
+    top:12px;
+    left:12px;
+    z-index:1000;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    cursor:pointer;
+    font-size:12px;
+    padding:8px 10px;
+}
+
+#precipButton.active {
+    background:#dff0ff;
+    border-color:#0077bb;
+}
+
+#closePrecip:hover,
+#precipButton:hover {
+    background:#eee;
+}
+
 #shortcutHelpPanel {
     position:fixed;
     top:88px;
@@ -893,6 +988,7 @@ body.history-active #historyMapBadges {
         <kbd>H</kbd><span>History playback</span>
         <kbd>G</kbd><span>Event plot</span>
         <kbd>T</kbd><span>Event title filter</span>
+        <kbd>Q</kbd><span>Precipitation controls</span>
         <kbd>Esc</kbd><span>Close the active floating panel</span>
       </div>
     </div>
@@ -984,6 +1080,31 @@ body.history-active #historyMapBadges {
       <button type="button" onclick="clearHistorySnapshots()" title="Clear saved history">Clear History</button>
       <button type="button" onclick="closeHistoryPanel()" title="Return to live">Live</button>
     </div>
+  </div>
+</div>
+
+<button id="precipButton" type="button" onclick="togglePrecipPanel()" title="Precipitation">Precip</button>
+
+<div id="precipPanel" role="dialog" aria-modal="false" aria-labelledby="precipTitle">
+  <div id="precipHeader">
+    <h3 id="precipTitle">Precipitation</h3>
+    <button id="closePrecip" type="button" onclick="closePrecipPanel()" aria-label="Close precipitation controls" title="Close">&times;</button>
+  </div>
+  <div id="precipBody">
+    <label>Overlay <input type="checkbox" id="precipToggle" onchange="togglePrecipLayer()"></label>
+    <label>Range
+      <select id="precipRangeSelector" onchange="changePrecipRange()">
+        <option value="1h" selected>Last 1h</option>
+        <option value="3h">Last 3h</option>
+        <option value="6h">Last 6h</option>
+        <option value="12h">Last 12h</option>
+        <option value="24h">Last 24h</option>
+        <option value="48h">Last 48h</option>
+        <option value="72h">Last 72h</option>
+      </select>
+    </label>
+    <label>Opacity <input type="range" id="precipOpacity" min="0" max="100" value="80" oninput="updatePrecipOpacity()"></label>
+    <div id="precipStatus">Off</div>
   </div>
 </div>
 
@@ -1094,9 +1215,15 @@ if (map.keyboard) {
     map.keyboard.disable();
 }
 
+map.createPane('precipPane');
+map.getPane('precipPane').style.zIndex = 450;
+map.getPane('precipPane').style.pointerEvents = 'none';
+
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
 let countyFeatureByFips = {};
 let radarLayer = null;
+let precipLayer = null;
+let precipRefreshToken = 0;
 let currentRadarTimestamp = Date.now();
 let countyOpacityValue = 0.7;
 let countyColorizationEnabled = true;
@@ -1142,6 +1269,17 @@ const RADAR_TILE_URL = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ne
 const HISTORY_RADAR_WMS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi";
 const HISTORY_RADAR_WMS_LAYER = "nexrad-n0r-wmst";
 const HISTORY_FRAME_CACHE_LIMIT = 30;
+const PRECIP_WMS_URL = "https://mapservices.weather.noaa.gov/raster/services/obs/mrms_qpe/ImageServer/WMSServer";
+const PRECIP_WMS_LAYERS = {
+    "1h": "mrms_qpe:rft_1hr:unknown@gpml",
+    "3h": "mrms_qpe:rft_3hr:unknown@gpml",
+    "6h": "mrms_qpe:rft_6hr:unknown@gpml",
+    "12h": "mrms_qpe:rft_12hr:unknown@gpml",
+    "24h": "mrms_qpe:rft_24hr:unknown@gpml",
+    "48h": "mrms_qpe:rft_48hr:unknown@gpml",
+    "72h": "mrms_qpe:rft_72hr:unknown@gpml"
+};
+const PRECIP_TILE_RETRY_LIMIT = 2;
 
 const stateAbbreviations = {
     "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
@@ -1185,6 +1323,8 @@ let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
 let isDraggingSetupPanel=false;
 let setupPanelDragOffset={ x:0, y:0 };
+let isDraggingPrecipPanel=false;
+let precipPanelDragOffset={ x:0, y:0 };
 let isDraggingShortcutHelpPanel=false;
 let shortcutHelpPanelDragOffset={ x:0, y:0 };
 let isDraggingPlotPanel=false;
@@ -3921,6 +4061,167 @@ function updateRadarOpacity(){
     if(radarLayer) radarLayer.setOpacity(radarOpacity.value/100);
 }
 
+// ===== PRECIPITATION =====
+const precipPanel=document.getElementById('precipPanel');
+const precipHeader=document.getElementById('precipHeader');
+const precipButton=document.getElementById('precipButton');
+const precipStatus=document.getElementById('precipStatus');
+
+function openPrecipPanel(){
+    precipPanel.classList.add('open');
+    clampPrecipPanel();
+}
+
+function closePrecipPanel(){
+    precipPanel.classList.remove('open');
+}
+
+function togglePrecipPanel(){
+    if(precipPanel.classList.contains('open')){
+        closePrecipPanel();
+    } else {
+        openPrecipPanel();
+    }
+}
+
+function clampPrecipPanel(){
+    const rect=precipPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    precipPanel.style.left=left+"px";
+    precipPanel.style.top=top+"px";
+}
+
+precipHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=precipPanel.getBoundingClientRect();
+    precipPanel.style.left=rect.left+"px";
+    precipPanel.style.top=rect.top+"px";
+
+    isDraggingPrecipPanel=true;
+    precipPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingPrecipPanel) return;
+
+    const rect=precipPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-precipPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-precipPanelDragOffset.y,0),maxTop);
+
+    precipPanel.style.left=left+"px";
+    precipPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingPrecipPanel=false;
+});
+
+function createPrecipLayer(opacity=precipOpacity.value/100){
+    const range=precipRangeSelector.value;
+    const layerName=PRECIP_WMS_LAYERS[range] || PRECIP_WMS_LAYERS["1h"];
+    return L.tileLayer.wms(PRECIP_WMS_URL,{
+        layers:layerName,
+        styles:"",
+        format:"image/png",
+        transparent:true,
+        version:"1.3.0",
+        pane:"precipPane",
+        opacity:opacity,
+        tileSize:512,
+        keepBuffer:4,
+        updateWhenIdle:true,
+        updateWhenZooming:false,
+        detectRetina:false,
+        crossOrigin:true,
+        attribution:"NOAA/NWS MRMS QPE"
+    });
+}
+
+function refreshPrecipLayer(){
+    if(!precipToggle.checked) return;
+
+    const token=++precipRefreshToken;
+    const previousLayer=precipLayer;
+    const rangeText=precipRangeSelector.options[precipRangeSelector.selectedIndex].text;
+    precipStatus.textContent="Loading " + rangeText + "...";
+    const nextLayer=createPrecipLayer(previousLayer ? 0 : precipOpacity.value/100);
+    let tileErrors=0;
+
+    nextLayer.once("load",()=>{
+        if(token !== precipRefreshToken || !precipToggle.checked){
+            map.removeLayer(nextLayer);
+            return;
+        }
+        if(previousLayer && map.hasLayer(previousLayer)) map.removeLayer(previousLayer);
+        nextLayer.setOpacity(precipOpacity.value/100);
+        precipLayer=nextLayer;
+        precipStatus.textContent=tileErrors
+            ? rangeText + " loaded, some tiles retrying"
+            : rangeText + " loaded";
+    });
+
+    nextLayer.on("tileerror",(event)=>{
+        const tile=event.tile;
+        const retries=Number(tile.dataset.precipRetries || 0);
+        if(retries < PRECIP_TILE_RETRY_LIMIT){
+            tile.dataset.precipRetries=String(retries + 1);
+            const retryUrl=tile.src.replace(/([?&])_retry=\d+(&|$)/,"$1").replace(/[?&]$/,"");
+            const separator=retryUrl.includes("?") ? "&" : "?";
+            setTimeout(()=>{
+                if(token === precipRefreshToken && precipToggle.checked){
+                    tile.src=retryUrl + separator + "_retry=" + (retries + 1) + "_" + Date.now();
+                }
+            },600 * (retries + 1));
+            return;
+        }
+
+        tileErrors++;
+        if(token === precipRefreshToken){
+            precipStatus.textContent=previousLayer
+                ? "NOAA/NWS slow, keeping previous layer"
+                : "NOAA/NWS tiles loading slowly";
+            console.warn("Unable to load NOAA/NWS precipitation tile");
+        }
+    });
+
+    nextLayer.addTo(map);
+    if(!previousLayer) precipLayer=nextLayer;
+}
+
+function togglePrecipLayer(){
+    precipRefreshToken++;
+    if(precipToggle.checked){
+        precipButton.classList.add('active');
+        refreshPrecipLayer();
+    } else {
+        precipButton.classList.remove('active');
+        if(precipLayer){
+            map.removeLayer(precipLayer);
+            precipLayer=null;
+        }
+        precipStatus.textContent="Off";
+    }
+}
+
+function changePrecipRange(){
+    if(precipToggle.checked) refreshPrecipLayer();
+}
+
+function updatePrecipOpacity(){
+    if(precipLayer) precipLayer.setOpacity(precipOpacity.value/100);
+}
+
 function updateMapOpacity(){
     const val=document.getElementById("mapOpacity").value;
     const opacity=val/100;
@@ -4136,6 +4437,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('precipPanel').classList.contains('open')) {
+        closePrecipPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('plotPanel').classList.contains('open')) {
         closePlotPanel();
         return;
@@ -4198,6 +4504,10 @@ document.addEventListener('keydown', (e) => {
         } else {
             openEventFilterPopup();
         }
+        return;
+    } else if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        togglePrecipPanel();
         return;
     } else if (e.key === 'c' || e.key === 'C') {
         countyColorizationEnabled = !countyColorizationEnabled;
