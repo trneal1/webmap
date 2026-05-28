@@ -3170,6 +3170,34 @@ function drawSingleTitlePlot(context,series,index,xScale,yScale,dpr){
     });
 }
 
+function drawPlotDayDividers(context,points,margin,height,dpr,xScale){
+    if(!points.length) return;
+
+    const minTime=points[0].timestamp;
+    const maxTime=points[points.length - 1].timestamp;
+    const nextDay=new Date(minTime);
+    nextDay.setHours(24,0,0,0);
+
+    context.save();
+    context.strokeStyle="#7f95ad";
+    context.lineWidth=1 * dpr;
+    context.setLineDash([3 * dpr,4 * dpr]);
+
+    for(let timestamp=nextDay.getTime();timestamp<maxTime;){
+        if(timestamp>minTime){
+            const x=xScale(timestamp);
+            context.beginPath();
+            context.moveTo(x,margin.top);
+            context.lineTo(x,height - margin.bottom);
+            context.stroke();
+        }
+        nextDay.setDate(nextDay.getDate() + 1);
+        timestamp=nextDay.getTime();
+    }
+
+    context.restore();
+}
+
 function drawPlotAxes(context,width,height,margin,seriesByTitle,maxValue,dpr,xScale,yScale){
     context.strokeStyle="#ddd";
     context.lineWidth=1 * dpr;
@@ -3188,6 +3216,8 @@ function drawPlotAxes(context,width,height,margin,seriesByTitle,maxValue,dpr,xSc
         context.stroke();
         context.fillText(String(value),margin.left - 8 * dpr,y);
     }
+
+    drawPlotDayDividers(context,seriesByTitle[0]?.points || [],margin,height,dpr,xScale);
 
     context.strokeStyle="#333";
     context.beginPath();
