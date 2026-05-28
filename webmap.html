@@ -29,6 +29,92 @@ body { margin:0; display:flex; font-family:Arial; }
 #tornadoWarningBanner.active {
     display:block;
 }
+
+#startupStatus {
+    position:absolute;
+    top:56px;
+    left:14px;
+    z-index:1200;
+    min-width:230px;
+    max-width:min(360px, calc(100% - 28px));
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.24);
+    font-size:12px;
+    line-height:1.4;
+    padding:10px 12px;
+    pointer-events:none;
+}
+
+#startupStatus.hidden {
+    display:none;
+}
+
+#startupStatusTitle {
+    font-weight:bold;
+    margin-bottom:6px;
+}
+
+#startupProgress {
+    height:8px;
+    background:#e8e8e8;
+    border:1px solid #bbb;
+    border-radius:4px;
+    margin-bottom:8px;
+    overflow:hidden;
+}
+
+#startupProgressBar {
+    width:0%;
+    height:100%;
+    background:#1677b7;
+    transition:width 0.25s ease;
+}
+
+#startupProgressText {
+    color:#444;
+    font-family:monospace;
+    margin-bottom:6px;
+}
+
+#startupStatusList {
+    display:grid;
+    gap:3px;
+    font-family:monospace;
+}
+
+.startup-status-item {
+    color:#444;
+}
+
+.startup-status-label {
+    display:block;
+}
+
+.startup-task-progress {
+    height:5px;
+    background:#eee;
+    border:1px solid #c8c8c8;
+    border-radius:3px;
+    margin-top:3px;
+    overflow:hidden;
+}
+
+.startup-task-progress-bar {
+    width:0%;
+    height:100%;
+    background:#489f68;
+    transition:width 0.2s ease;
+}
+
+.startup-status-item.done {
+    color:#0a6b28;
+}
+
+.startup-status-item.error {
+    color:#a00000;
+}
 #resizer { width:6px; cursor:col-resize; background:#ccc; }
 #sidebar { width:30%; padding:10px; overflow:auto; border-left:2px solid #333; }
 
@@ -619,6 +705,211 @@ body.history-active #historyMapBadges {
     background:#eee;
 }
 
+#lightningPanel {
+    position:fixed;
+    top:118px;
+    left:18px;
+    z-index:2200;
+    display:none;
+    width:min(280px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+}
+
+#lightningPanel.open {
+    display:block;
+}
+
+#lightningHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#lightningHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#closeLightning {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#lightningBody {
+    display:grid;
+    gap:10px;
+    padding:10px;
+}
+
+#lightningBody label {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+}
+
+#lightningBody input[type="range"] {
+    width:150px;
+}
+
+#lightningStatus {
+    color:#444;
+    font-family:monospace;
+}
+
+#lightningButton {
+    position:fixed;
+    top:48px;
+    left:12px;
+    z-index:1000;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    cursor:pointer;
+    font-size:12px;
+    padding:8px 10px;
+}
+
+#lightningButton.active {
+    background:#fff2bf;
+    border-color:#c28a00;
+}
+
+#closeLightning:hover,
+#lightningButton:hover {
+    background:#eee;
+}
+
+.mapScalePanel {
+    position:fixed;
+    z-index:1000;
+    display:none;
+    min-width:220px;
+    min-height:92px;
+    max-width:calc(100vw - 24px);
+    max-height:calc(100vh - 24px);
+    overflow:auto;
+    resize:both;
+    background:rgba(255,255,255,0.96);
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.28);
+    font-size:13px;
+}
+
+#precipScalePanel {
+    left:12px;
+    top:94px;
+    width:min(340px, calc(100vw - 24px));
+}
+
+#lightningScalePanel {
+    left:50%;
+    top:12px;
+    width:min(420px, calc(100vw - 24px));
+    transform:translateX(-50%);
+}
+
+.mapScalePanel.visible {
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+}
+
+.mapScaleHeader {
+    color:#111;
+    font-size:16px;
+    font-weight:bold;
+    padding:10px 12px 8px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+.mapScaleBody {
+    display:grid;
+    padding:10px 12px 12px;
+    gap:8px;
+    min-height:0;
+}
+
+.mapScalePanel.is-dragging {
+    resize:none;
+}
+
+.scaleLegendImageWrap {
+    min-height:56px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    width:100%;
+    height:100%;
+}
+
+#precipLegendImage,
+#lightningLegendImage {
+    display:block;
+    width:100%;
+    height:100%;
+    min-width:0;
+    min-height:0;
+    object-fit:contain;
+}
+
+#precipLegendImage[hidden],
+#lightningLegendImage[hidden],
+.precipLegendFallback[hidden] {
+    display:none;
+}
+
+.precipLegendFallback {
+    width:100%;
+    height:100%;
+    display:grid;
+    gap:6px;
+    align-content:center;
+}
+
+.precipLegendGradient {
+    height:clamp(16px, 34%, 44px);
+    border:1px solid #777;
+    background:linear-gradient(90deg,
+        #ffffff 0%,
+        #d7f0ff 10%,
+        #62b7ff 24%,
+        #1d62ff 38%,
+        #2bc44f 52%,
+        #f4df28 66%,
+        #f7931e 80%,
+        #d7191c 92%,
+        #8b1a8b 100%);
+}
+
+.precipLegendTicks {
+    display:flex;
+    justify-content:space-between;
+    gap:6px;
+    color:#222;
+    font-size:12px;
+    white-space:nowrap;
+}
+
 #shortcutHelpPanel {
     position:fixed;
     top:88px;
@@ -921,6 +1212,26 @@ body.history-active #historyMapBadges {
 <body tabindex="0">
 
 <div id="map">
+  <div id="startupStatus" role="status" aria-live="polite">
+    <div id="startupStatusTitle">Starting dashboard...</div>
+    <div id="startupProgress" aria-hidden="true">
+      <div id="startupProgressBar"></div>
+    </div>
+    <div id="startupProgressText">0% complete</div>
+    <div id="startupStatusList">
+      <div id="startupStatusSetup" class="startup-status-item">Setup: loading</div>
+      <div id="startupStatusHistory" class="startup-status-item">
+        <span class="startup-status-label">History: waiting</span>
+        <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressHistory" class="startup-task-progress-bar"></div></div>
+      </div>
+      <div id="startupStatusPlot" class="startup-status-item">
+        <span class="startup-status-label">Plot cache: waiting</span>
+        <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressPlot" class="startup-task-progress-bar"></div></div>
+      </div>
+      <div id="startupStatusCounties" class="startup-status-item">Counties: waiting</div>
+      <div id="startupStatusStates" class="startup-status-item">States: waiting</div>
+    </div>
+  </div>
   <div id="tornadoWarningBanner" role="status" aria-live="polite">tornado warnings</div>
   <div id="historyMapBadges" aria-live="polite">
     <div id="historyModeBadge" class="history-map-badge">History</div>
@@ -989,6 +1300,7 @@ body.history-active #historyMapBadges {
         <kbd>G</kbd><span>Event plot</span>
         <kbd>T</kbd><span>Event title filter</span>
         <kbd>Q</kbd><span>Precipitation controls</span>
+        <kbd>Y</kbd><span>Lightning controls</span>
         <kbd>Esc</kbd><span>Close the active floating panel</span>
       </div>
     </div>
@@ -1035,7 +1347,7 @@ body.history-active #historyMapBadges {
   <div id="plotBody">
     <div id="plotControls">
       <label>Start <input id="plotStart" type="datetime-local" onchange="refreshEventPlot()"></label>
-      <label>Stop <input id="plotStop" type="datetime-local" onchange="refreshEventPlot()"></label>
+      <label>Stop <input id="plotStop" type="datetime-local" onchange="handlePlotStopChange()"></label>
       <label>Count <select id="plotCountMode" onchange="changePlotCountMode()"><option value="alerts">Active alerts</option><option value="counties">Impacted counties</option></select></label>
       <label>Event titles <select id="plotEventTitles" multiple onchange="refreshEventPlot()"></select></label>
       <button type="button" onclick="selectAllPlotEventTitles()">All</button>
@@ -1105,6 +1417,44 @@ body.history-active #historyMapBadges {
     </label>
     <label>Opacity <input type="range" id="precipOpacity" min="0" max="100" value="80" oninput="updatePrecipOpacity()"></label>
     <div id="precipStatus">Off</div>
+  </div>
+</div>
+
+<button id="lightningButton" type="button" onclick="toggleLightningPanel()" title="Lightning">Lightning</button>
+
+<div id="lightningPanel" role="dialog" aria-modal="false" aria-labelledby="lightningTitle">
+  <div id="lightningHeader">
+    <h3 id="lightningTitle">Lightning</h3>
+    <button id="closeLightning" type="button" onclick="closeLightningPanel()" aria-label="Close lightning controls" title="Close">&times;</button>
+  </div>
+  <div id="lightningBody">
+    <label>Overlay <input type="checkbox" id="lightningToggle" onchange="toggleLightningLayer()"></label>
+    <label>Opacity <input type="range" id="lightningOpacity" min="0" max="100" value="80" oninput="updateLightningOpacity()"></label>
+    <div id="lightningStatus">Off</div>
+  </div>
+</div>
+
+<div id="lightningScalePanel" class="mapScalePanel" aria-label="Lightning density color scale">
+  <div id="lightningScaleHeader" class="mapScaleHeader">Lightning Scale</div>
+  <div class="mapScaleBody">
+    <div class="scaleLegendImageWrap">
+      <img id="lightningLegendImage" alt="NOAA lightning density color scale">
+    </div>
+  </div>
+</div>
+
+<div id="precipScalePanel" class="mapScalePanel" aria-label="Precipitation color scale">
+  <div id="precipScaleHeader" class="mapScaleHeader">Precipitation Scale</div>
+  <div class="mapScaleBody">
+    <div class="scaleLegendImageWrap">
+      <img id="precipLegendImage" alt="NOAA precipitation color scale">
+      <div id="precipLegendFallback" class="precipLegendFallback" hidden>
+        <div class="precipLegendGradient"></div>
+        <div class="precipLegendTicks">
+          <span>0</span><span>0.1</span><span>0.5</span><span>1</span><span>2</span><span>4+</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1218,12 +1568,17 @@ if (map.keyboard) {
 map.createPane('precipPane');
 map.getPane('precipPane').style.zIndex = 450;
 map.getPane('precipPane').style.pointerEvents = 'none';
+map.createPane('lightningPane');
+map.getPane('lightningPane').style.zIndex = 460;
+map.getPane('lightningPane').style.pointerEvents = 'none';
 
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
 let countyFeatureByFips = {};
 let radarLayer = null;
 let precipLayer = null;
 let precipRefreshToken = 0;
+let lightningLayer = null;
+let lightningRefreshToken = 0;
 let currentRadarTimestamp = Date.now();
 let countyOpacityValue = 0.7;
 let countyColorizationEnabled = true;
@@ -1246,6 +1601,19 @@ let historyPanelLoading = false;
 let historyLoadToken = 0;
 let historyFrameLoadToken = 0;
 let historyFrameCache = new Map();
+let historyIndexCache = [];
+let historyIndexReady = false;
+let historyIndexLoading = false;
+let historyIndexLoadPromise = null;
+let plotHistoryCache = {
+    frames:[],
+    titleCounts:new Map()
+};
+let plotHistoryReady = false;
+let plotHistoryLoading = false;
+let plotHistoryLoadPromise = null;
+let plotStopAutoFollowLatest = true;
+let startupBackgroundCachesStarted = false;
 let currentSidebarSelection = null;
 
 // Timer tracking
@@ -1255,6 +1623,7 @@ let weatherUpdateInterval = 60000; // 60 seconds
 let radarUpdateInterval = 300000; // 300 seconds
 let weatherRefreshTimer = null;
 let radarRefreshTimer = null;
+let lightningRefreshTimer = null;
 let historyRecordingEnabled = true;
 let historyFrameWeatherUpdates = 1;
 let weatherUpdatesSinceHistoryFrame = 0;
@@ -1280,6 +1649,18 @@ const PRECIP_WMS_LAYERS = {
     "72h": "mrms_qpe:rft_72hr:unknown@gpml"
 };
 const PRECIP_TILE_RETRY_LIMIT = 2;
+const LIGHTNING_WMS_URL = "https://nowcoast.noaa.gov/geoserver/ows";
+const LIGHTNING_WMS_LAYER = "lightning_detection:ldn_lightning_strike_density";
+const LIGHTNING_WMS_STYLE = "lightning_density";
+const LIGHTNING_REFRESH_INTERVAL = 15 * 60 * 1000;
+const LIGHTNING_TILE_RETRY_LIMIT = 2;
+const startupStatusState = {
+    setup:false,
+    history:false,
+    plot:false,
+    counties:false,
+    states:false
+};
 
 const stateAbbreviations = {
     "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
@@ -1325,6 +1706,11 @@ let isDraggingSetupPanel=false;
 let setupPanelDragOffset={ x:0, y:0 };
 let isDraggingPrecipPanel=false;
 let precipPanelDragOffset={ x:0, y:0 };
+let isDraggingLightningPanel=false;
+let lightningPanelDragOffset={ x:0, y:0 };
+let isDraggingScalePanel=false;
+let scalePanelDragTarget=null;
+let scalePanelDragOffset={ x:0, y:0 };
 let isDraggingShortcutHelpPanel=false;
 let shortcutHelpPanelDragOffset={ x:0, y:0 };
 let isDraggingPlotPanel=false;
@@ -1431,6 +1817,7 @@ window.addEventListener('resize',()=>{
         clampPlotPanel();
         drawEventPlot();
     }
+    clampScalePanels();
 });
 
 // ===== HISTORY PANEL DRAG =====
@@ -1804,6 +2191,7 @@ document.addEventListener('mouseup',()=>{
 
 loadSetupSettings();
 syncSetupControls();
+setStartupStatus("setup","Setup: loaded","done");
 
 // ===== TIMER =====
 setInterval(()=>{
@@ -1884,6 +2272,54 @@ function formatWmsTime(timestamp){
 
 function nextPaint(){
     return new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+}
+
+function runWhenIdle(callback,timeout=1200){
+    if("requestIdleCallback" in window){
+        window.requestIdleCallback(callback,{ timeout });
+    } else {
+        setTimeout(callback,0);
+    }
+}
+
+function setStartupStatus(key,message,state="loading"){
+    const element=document.getElementById("startupStatus" + key.charAt(0).toUpperCase() + key.slice(1));
+    if(!element) return;
+    const label=element.querySelector(".startup-status-label");
+    if(label){
+        label.textContent=message;
+    } else {
+        element.textContent=message;
+    }
+    element.classList.toggle("done",state === "done");
+    element.classList.toggle("error",state === "error");
+    startupStatusState[key]=state === "done" || state === "error";
+    updateStartupProgress();
+    maybeHideStartupStatus();
+}
+
+function maybeHideStartupStatus(){
+    const status=document.getElementById("startupStatus");
+    if(!status) return;
+    if(Object.values(startupStatusState).every(Boolean)){
+        setTimeout(()=>status.classList.add("hidden"),900);
+    }
+}
+
+function updateStartupProgress(){
+    const total=Object.keys(startupStatusState).length;
+    const complete=Object.values(startupStatusState).filter(Boolean).length;
+    const percent=Math.round((complete / Math.max(1,total)) * 100);
+    const bar=document.getElementById("startupProgressBar");
+    const text=document.getElementById("startupProgressText");
+    if(bar) bar.style.width=percent + "%";
+    if(text) text.textContent=percent + "% complete";
+}
+
+function setStartupTaskProgress(key,percent){
+    const bar=document.getElementById("startupProgress" + key.charAt(0).toUpperCase() + key.slice(1));
+    if(!bar) return;
+    bar.style.width=Math.min(Math.max(Math.round(percent),0),100) + "%";
 }
 
 function openHistoryDb(){
@@ -2056,6 +2492,7 @@ async function saveHistorySnapshot(alerts,timestamp=Date.now()){
             store.put(snapshot);
             store.delete(IDBKeyRange.upperBound(timestamp - HISTORY_RETENTION_MS));
         });
+        updateHistoryCachesWithSnapshot(snapshot);
     }catch(error){
         console.warn("Unable to save history snapshot",error);
     }
@@ -2086,6 +2523,78 @@ function cacheHistoryFrame(frame){
         const oldestKey=historyFrameCache.keys().next().value;
         historyFrameCache.delete(oldestKey);
     }
+}
+
+function mergeHistoryIndexFrames(frames){
+    historyIndexCache=normalizeHistoryFrames([...historyIndexCache,...frames]);
+    return historyIndexCache;
+}
+
+function getCachedHistorySnapshots(sinceTimestamp=null){
+    const cutoff=Date.now() - HISTORY_RETENTION_MS;
+    return historyIndexCache.filter(frame=>{
+        if(!frame || !Number.isFinite(frame.timestamp)) return false;
+        if(frame.timestamp < cutoff) return false;
+        if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp) return false;
+        return true;
+    });
+}
+
+function getCachedPlotHistoryFrames(sinceTimestamp=null){
+    const cutoff=Date.now() - HISTORY_RETENTION_MS;
+    const frames=(plotHistoryCache.frames || []).filter(frame=>{
+        if(!frame || !Number.isFinite(frame.timestamp)) return false;
+        if(frame.timestamp < cutoff) return false;
+        if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp) return false;
+        return true;
+    });
+    return {
+        frames,
+        titleCounts:getPlotTitleCountsFromFrames(frames)
+    };
+}
+
+function syncOpenHistoryPanelFromCache(){
+    if(!historyPanel.classList.contains('open') || historyPanelLoading) return;
+    const cachedFrames=getCachedHistorySnapshots();
+    const previousLatestTimestamp=historyFrames[historyFrames.length - 1]?.timestamp;
+    const wasEmpty=!historyFrames.length;
+    const wasAtLatest=wasEmpty || (Number(historySlider.value) || 0) === historyFrames.length - 1;
+
+    historyFrames=cachedFrames;
+    updateHistoryPanelState();
+    if(wasAtLatest && historyFrames.length && historyFrames[historyFrames.length - 1].timestamp !== previousLatestTimestamp){
+        showHistoryFrame(historyFrames.length - 1).catch(error=>{
+            console.warn("Unable to show latest cached history frame",error);
+        });
+    }
+}
+
+function syncOpenPlotPanelFromCache(){
+    if(!plotPanel.classList.contains('open') || plotPanelLoading || !plotHistoryReady) return;
+    const previousLatestTimestamp=plotFrames[plotFrames.length - 1]?.timestamp;
+    const shouldExtendStop=shouldAutoExtendPlotStop(previousLatestTimestamp);
+    applyPlotHistory(getCachedPlotHistoryFrames(),shouldExtendStop);
+    drawEventPlot();
+}
+
+function updateHistoryCachesWithSnapshot(snapshot){
+    const metadata=createHistoryFrameMetadata(snapshot);
+    mergeHistoryIndexFrames([metadata]);
+    cacheHistoryFrame(snapshot);
+
+    const plotCounts=getHistoryFramePlotCounts(snapshot);
+    plotHistoryCache.frames=normalizeHistoryFrames([
+        ...(plotHistoryCache.frames || []),
+        {
+            timestamp:snapshot.timestamp,
+            alertTitleCounts:plotCounts.alertTitleCounts,
+            countyTitleCounts:plotCounts.countyTitleCounts
+        }
+    ]);
+    plotHistoryCache.titleCounts=getPlotTitleCountsFromFrames(plotHistoryCache.frames);
+    syncOpenHistoryPanelFromCache();
+    syncOpenPlotPanelFromCache();
 }
 
 async function loadHistoryFrame(timestamp){
@@ -2123,7 +2632,7 @@ function normalizeHistoryFrames(frames){
     return [...framesByMinute.values()].sort((a,b)=>a.timestamp-b.timestamp);
 }
 
-async function loadHistorySnapshots(sinceTimestamp=null){
+async function loadHistorySnapshotsFromDb(sinceTimestamp=null,onProgress=null){
     try{
         let frames=[];
         const cutoff=Date.now() - HISTORY_RETENTION_MS;
@@ -2131,17 +2640,34 @@ async function loadHistorySnapshots(sinceTimestamp=null){
             ? Math.max(cutoff,sinceTimestamp + 1)
             : cutoff;
         await withHistoryStore("readonly",(store)=>{
+            let total=0;
+            let processed=0;
+            const countRequest=store.count(IDBKeyRange.lowerBound(lowerBound));
+            countRequest.onsuccess=()=>{
+                total=countRequest.result || 0;
+                if(typeof onProgress === "function") onProgress(total ? 1 : 100);
+            };
             const request=store.openCursor(IDBKeyRange.lowerBound(lowerBound));
             request.onsuccess=()=>{
                 const cursor=request.result;
-                if(!cursor) return;
+                if(!cursor){
+                    if(typeof onProgress === "function") onProgress(100);
+                    return;
+                }
+                processed++;
                 const frame=cursor.value;
                 if(frame && Number.isFinite(frame.timestamp) && frame.alerts && typeof frame.alerts === "object"){
                     if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp){
+                        if(typeof onProgress === "function" && total && processed % 25 === 0){
+                            onProgress((processed / total) * 100);
+                        }
                         cursor.continue();
                         return;
                     }
                     frames.push(createHistoryFrameMetadata(frame));
+                }
+                if(typeof onProgress === "function" && total && processed % 25 === 0){
+                    onProgress((processed / total) * 100);
                 }
                 cursor.continue();
             };
@@ -2151,6 +2677,14 @@ async function loadHistorySnapshots(sinceTimestamp=null){
         console.warn("Unable to load history snapshots",error);
         return [];
     }
+}
+
+async function loadHistorySnapshots(sinceTimestamp=null){
+    const cachedFrames=getCachedHistorySnapshots(sinceTimestamp);
+    if(historyIndexReady || cachedFrames.length){
+        return cachedFrames;
+    }
+    return loadHistorySnapshotsFromDb(sinceTimestamp);
 }
 
 function getPlotFrameTitleCounts(frame,mode=getPlotCountMode()){
@@ -2176,7 +2710,7 @@ function getPlotTitleCountsFromFrames(frames,mode=getPlotCountMode()){
     return titleCounts;
 }
 
-async function loadPlotHistoryFrames(sinceTimestamp=null){
+async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
     let directError=null;
     try{
         const frames=[];
@@ -2186,14 +2720,28 @@ async function loadPlotHistoryFrames(sinceTimestamp=null){
             : cutoff;
 
         await withHistoryStore("readonly",(store)=>{
+            let total=0;
+            let processed=0;
+            const countRequest=store.count(IDBKeyRange.lowerBound(lowerBound));
+            countRequest.onsuccess=()=>{
+                total=countRequest.result || 0;
+                if(typeof onProgress === "function") onProgress(total ? 1 : 100);
+            };
             const request=store.openCursor(IDBKeyRange.lowerBound(lowerBound));
             request.onsuccess=()=>{
                 const cursor=request.result;
-                if(!cursor) return;
+                if(!cursor){
+                    if(typeof onProgress === "function") onProgress(100);
+                    return;
+                }
+                processed++;
                 const frame=cursor.value;
                 try{
                     if(frame && Number.isFinite(frame.timestamp) && frame.alerts && typeof frame.alerts === "object"){
                         if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp){
+                            if(typeof onProgress === "function" && total && processed % 20 === 0){
+                                onProgress((processed / total) * 100);
+                            }
                             cursor.continue();
                             return;
                         }
@@ -2206,6 +2754,9 @@ async function loadPlotHistoryFrames(sinceTimestamp=null){
                     }
                 }catch(error){
                     console.warn("Unable to process plot history frame",frame?.timestamp,error);
+                }
+                if(typeof onProgress === "function" && total && processed % 20 === 0){
+                    onProgress((processed / total) * 100);
                 }
                 cursor.continue();
             };
@@ -2233,6 +2784,14 @@ async function loadPlotHistoryFrames(sinceTimestamp=null){
     }
 }
 
+async function loadPlotHistoryFrames(sinceTimestamp=null){
+    const cachedFrames=getCachedPlotHistoryFrames(sinceTimestamp);
+    if(plotHistoryReady || cachedFrames.frames.length){
+        return cachedFrames;
+    }
+    return loadPlotHistoryFramesFromDb(sinceTimestamp);
+}
+
 async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
     const metadata=await loadHistorySnapshots(sinceTimestamp);
     const frames=[];
@@ -2258,6 +2817,78 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
         frames:normalizedFrames,
         titleCounts:getPlotTitleCountsFromFrames(normalizedFrames)
     };
+}
+
+function startHistoryIndexBackgroundLoad(){
+    if(historyIndexLoading) return historyIndexLoadPromise;
+    historyIndexLoading=true;
+    setStartupStatus("history","History: reading saved frames");
+    setStartupTaskProgress("history",0);
+    historyIndexLoadPromise=(async()=>{
+        const frames=await loadHistorySnapshotsFromDb(null,percent=>setStartupTaskProgress("history",percent));
+        historyIndexCache=frames;
+        historyIndexReady=true;
+        setStartupTaskProgress("history",100);
+        setStartupStatus("history","History: " + frames.length + (frames.length === 1 ? " frame" : " frames"),"done");
+        syncOpenHistoryPanelFromCache();
+        return frames;
+    })().catch(error=>{
+        setStartupTaskProgress("history",100);
+        setStartupStatus("history","History: unavailable","error");
+        console.warn("Unable to build background history index",error);
+        return [];
+    }).finally(()=>{
+        historyIndexLoading=false;
+    });
+    return historyIndexLoadPromise;
+}
+
+function startPlotHistoryBackgroundLoad(){
+    if(plotHistoryLoading) return plotHistoryLoadPromise;
+    plotHistoryLoading=true;
+    setStartupStatus("plot","Plot cache: reading event counts");
+    setStartupTaskProgress("plot",0);
+    plotHistoryLoadPromise=(async()=>{
+        if(!historyIndexReady){
+            await startHistoryIndexBackgroundLoad();
+        }
+        const plotHistory=await loadPlotHistoryFramesFromDb(null,percent=>setStartupTaskProgress("plot",percent));
+        plotHistoryCache={
+            frames:Array.isArray(plotHistory.frames) ? plotHistory.frames : [],
+            titleCounts:plotHistory.titleCounts instanceof Map ? plotHistory.titleCounts : new Map()
+        };
+        plotHistoryReady=true;
+        setStartupTaskProgress("plot",100);
+        setStartupStatus("plot","Plot cache: " + plotHistoryCache.frames.length + (plotHistoryCache.frames.length === 1 ? " frame" : " frames"),"done");
+        syncOpenPlotPanelFromCache();
+        return plotHistoryCache;
+    })().catch(error=>{
+        setStartupTaskProgress("plot",100);
+        setStartupStatus("plot","Plot cache: unavailable","error");
+        console.warn("Unable to build background plot cache",error);
+        return plotHistoryCache;
+    }).finally(()=>{
+        plotHistoryLoading=false;
+    });
+    return plotHistoryLoadPromise;
+}
+
+function startHistoryBackgroundCaches(){
+    if(startupBackgroundCachesStarted) return;
+    startupBackgroundCachesStarted=true;
+    setStartupStatus("history","History: waiting for map");
+    setStartupStatus("plot","Plot cache: waiting for history");
+    runWhenIdle(()=>{
+        startHistoryIndexBackgroundLoad().finally(()=>{
+            runWhenIdle(()=>startPlotHistoryBackgroundLoad(),1800);
+        });
+    },1800);
+}
+
+async function startHistoryBackgroundCachesAfterFirstMapPaint(){
+    await nextPaint();
+    await nextPaint();
+    startHistoryBackgroundCaches();
 }
 
 function getHistoryFramePlotCounts(frame){
@@ -2664,6 +3295,11 @@ function refreshEventPlot(){
     drawEventPlot();
 }
 
+function handlePlotStopChange(){
+    plotStopAutoFollowLatest=false;
+    refreshEventPlot();
+}
+
 function changePlotCountMode(){
     plotTitleCounts=getPlotTitleCountsFromFrames(plotFrames);
     populatePlotEventTitleOptions(plotTitleCounts);
@@ -2692,7 +3328,15 @@ function populatePlotEventTitleOptions(titleCounts){
 
 function shouldAutoExtendPlotStop(previousLatestTimestamp){
     if(!plotStop.value) return true;
+    if(plotStopAutoFollowLatest) return true;
     return Number.isFinite(previousLatestTimestamp) && plotStop.value === formatDateTimeLocal(previousLatestTimestamp);
+}
+
+function setPlotStopToLatest(){
+    if(plotFrames.length){
+        plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
+        plotStopAutoFollowLatest=true;
+    }
 }
 
 function applyPlotHistory(plotHistory,shouldExtendStop){
@@ -2702,7 +3346,7 @@ function applyPlotHistory(plotHistory,shouldExtendStop){
         : getPlotTitleCountsFromFrames(plotFrames);
     if(plotFrames.length){
         if(!plotStart.value) plotStart.value=formatDateTimeLocal(plotFrames[0].timestamp);
-        if(shouldExtendStop) plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
+        if(shouldExtendStop) setPlotStopToLatest();
     }
     populatePlotEventTitleOptions(plotTitleCounts);
     setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
@@ -2714,7 +3358,7 @@ function mergeIncrementalPlotHistory(plotHistory,shouldExtendStop){
     if(incomingFrames.length){
         plotFrames=normalizeHistoryFrames([...plotFrames,...incomingFrames]);
         plotTitleCounts=getPlotTitleCountsFromFrames(plotFrames);
-        if(shouldExtendStop) plotStop.value=formatDateTimeLocal(plotFrames[plotFrames.length - 1].timestamp);
+        if(shouldExtendStop) setPlotStopToLatest();
         populatePlotEventTitleOptions(plotTitleCounts);
     }
     setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
@@ -2736,10 +3380,15 @@ async function reloadPlotHistory(){
     await nextPaint();
 
     try{
-        const plotHistory=await loadPlotHistoryFrames(previousLatestTimestamp);
+        const plotHistory=await loadPlotHistoryFramesFromDb(previousLatestTimestamp);
         if(loadToken !== plotLoadToken) return;
         plotPanelLoading=false;
         const addedFrameCount=mergeIncrementalPlotHistory(plotHistory,shouldExtendStop);
+        if(addedFrameCount){
+            plotHistoryCache.frames=normalizeHistoryFrames([...plotHistoryCache.frames,...plotHistory.frames]);
+            plotHistoryCache.titleCounts=getPlotTitleCountsFromFrames(plotHistoryCache.frames);
+            plotHistoryReady=true;
+        }
         drawEventPlot();
         if(!addedFrameCount){
             plotHint.textContent="No new history frames since the plot was loaded.";
@@ -2759,40 +3408,38 @@ async function openPlotPanel(){
         restorePlotPanel();
         return;
     }
-    const loadToken=++plotLoadToken;
-    plotPanelLoading=true;
-    plotFrames=[];
-    plotTitleCounts=new Map();
+    ++plotLoadToken;
     plotPanel.classList.remove('minimized');
     plotPanel.classList.add('open');
     minimizedPanels.plot=false;
     updatePanelRestoreDock();
     clampPlotPanel();
-    setPlotStatus("Loading...");
-    clearEventPlot("Loading history...");
-    await nextPaint();
 
-    try{
-        const plotHistory=await loadPlotHistoryFrames();
-        if(loadToken !== plotLoadToken) return;
-
+    const cachedPlotHistory=getCachedPlotHistoryFrames();
+    if(cachedPlotHistory.frames.length){
         plotPanelLoading=false;
-        applyPlotHistory(plotHistory,!plotStop.value);
-        try{
-            drawEventPlot();
-        }catch(error){
-            console.warn("Unable to draw event plot",error);
-            clearEventPlot("Unable to draw plot");
-            plotHint.textContent="History loaded, but the plot could not be drawn.";
-        }
-    }catch(error){
-        if(loadToken !== plotLoadToken) return;
+        applyPlotHistory(cachedPlotHistory,!plotStop.value);
+        drawEventPlot();
+        startPlotHistoryBackgroundLoad();
+        return;
+    }
+
+    if(plotHistoryLoading || historyIndexLoading){
         plotPanelLoading=false;
         plotFrames=[];
-        setPlotStatus("Error");
-        clearEventPlot("Unable to load history");
-        console.warn("Unable to open plot panel",error);
+        plotTitleCounts=new Map();
+        setPlotStatus("Indexing...");
+        clearEventPlot("History indexing in background...");
+        startPlotHistoryBackgroundLoad();
+        return;
     }
+
+    plotPanelLoading=false;
+    plotFrames=[];
+    plotTitleCounts=new Map();
+    setPlotStatus("No data");
+    clearEventPlot("No saved history");
+    startPlotHistoryBackgroundLoad();
 }
 
 function closePlotPanel(){
@@ -2875,6 +3522,12 @@ async function clearHistorySnapshots(){
         });
         historyFrames=[];
         historyFrameCache.clear();
+        historyIndexCache=[];
+        historyIndexReady=true;
+        historyIndexLoading=false;
+        plotHistoryCache={ frames:[], titleCounts:new Map() };
+        plotHistoryReady=true;
+        plotHistoryLoading=false;
         historyFrameLoadToken++;
         historyFrameTimestamp=null;
         historyStart.value="";
@@ -2995,6 +3648,7 @@ async function showHistoryFrame(index,options={}){
     try{
         const { stopPlayback=true, updateRadar=true }=options;
         if(stopPlayback) stopHistoryPlayback(false,false);
+        disableLiveOnlyOverlays();
 
         index=Math.min(Math.max(index,0),historyFrames.length - 1);
         const metadata=historyFrames[index];
@@ -3212,10 +3866,14 @@ async function reloadHistoryPanel(){
     await nextPaint();
 
     try{
-        const loadedFrames=await loadHistorySnapshots(previousLatestTimestamp);
+        const loadedFrames=await loadHistorySnapshotsFromDb(previousLatestTimestamp);
         if(loadToken !== historyLoadToken) return;
 
         historyFrames=normalizeHistoryFrames([...historyFrames,...loadedFrames]);
+        if(loadedFrames.length){
+            mergeHistoryIndexFrames(loadedFrames);
+            historyIndexReady=true;
+        }
         historyPanelLoading=false;
         if(shouldExtendStop && historyFrames.length){
             historyStop.value=formatDateTimeLocal(historyFrames[historyFrames.length - 1].timestamp);
@@ -3242,38 +3900,44 @@ async function openHistoryPanel(){
         restoreHistoryPanel();
         return;
     }
-    const loadToken=++historyLoadToken;
+    ++historyLoadToken;
     stopHistoryPlayback();
+    disableLiveOnlyOverlays();
     historyModeActive=true;
     document.body.classList.add('history-active');
-    historyPanelLoading=true;
-    historyFrames=[];
-    historyStart.value="";
-    historyStop.value="";
     historyPanel.classList.remove('minimized');
     historyPanel.classList.add('open');
     minimizedPanels.history=false;
     updatePanelRestoreDock();
     clampHistoryPanel();
-    updateHistoryPanelState();
-    await nextPaint();
 
-    try{
-        const loadedFrames=await loadHistorySnapshots();
-        if(loadToken !== historyLoadToken) return;
-        historyFrames=loadedFrames;
+    const cachedFrames=getCachedHistorySnapshots();
+    if(cachedFrames.length){
+        historyFrames=cachedFrames;
         historyPanelLoading=false;
         updateHistoryPanelState();
         if(historyFrames.length){
             await showHistoryFrame(historyFrames.length - 1);
         }
-    }catch(error){
-        if(loadToken !== historyLoadToken) return;
-        historyPanelLoading=false;
-        historyFrames=[];
-        updateHistoryPanelState();
-        console.warn("Unable to open history panel",error);
+        startHistoryIndexBackgroundLoad();
+        return;
     }
+
+    historyFrames=[];
+    historyStart.value="";
+    historyStop.value="";
+    if(historyIndexLoading){
+        historyPanelLoading=false;
+        updateHistoryPanelState();
+        document.getElementById('historyStatus').textContent="Indexing...";
+        historyTime.textContent="History indexing in background...";
+        startHistoryIndexBackgroundLoad();
+        return;
+    }
+
+    historyPanelLoading=false;
+    updateHistoryPanelState();
+    startHistoryIndexBackgroundLoad();
 }
 
 function closeHistoryPanel(){
@@ -3562,9 +4226,9 @@ async function refresh(){
     } else {
         weatherUpdatesSinceHistoryFrame=0;
     }
-    if(historyRecordingEnabled && weatherUpdatesSinceHistoryFrame >= historyFrameWeatherUpdates){
+    const shouldSaveHistorySnapshot=historyRecordingEnabled && weatherUpdatesSinceHistoryFrame >= historyFrameWeatherUpdates;
+    if(shouldSaveHistorySnapshot){
         weatherUpdatesSinceHistoryFrame=0;
-        await saveHistorySnapshot(liveRawData);
     }
 
     if(!historyModeActive){
@@ -3574,6 +4238,12 @@ async function refresh(){
             renderEventFilterList();
         }
         redrawMap();
+    }
+
+    if(shouldSaveHistorySnapshot){
+        saveHistorySnapshot(liveRawData).catch(error=>{
+            console.warn("Unable to save history snapshot",error);
+        });
     }
 }
 
@@ -4066,6 +4736,84 @@ const precipPanel=document.getElementById('precipPanel');
 const precipHeader=document.getElementById('precipHeader');
 const precipButton=document.getElementById('precipButton');
 const precipStatus=document.getElementById('precipStatus');
+const precipLegendImage=document.getElementById('precipLegendImage');
+const precipLegendFallback=document.getElementById('precipLegendFallback');
+const precipScalePanel=document.getElementById('precipScalePanel');
+const precipScaleHeader=document.getElementById('precipScaleHeader');
+const lightningScalePanel=document.getElementById('lightningScalePanel');
+const lightningScaleHeader=document.getElementById('lightningScaleHeader');
+
+function updateMapScalePanelVisibility(){
+    const showPrecip=Boolean(precipToggle && precipToggle.checked);
+    const showLightning=Boolean(lightningToggle && lightningToggle.checked);
+
+    if(precipScalePanel) precipScalePanel.classList.toggle('visible',showPrecip);
+    if(lightningScalePanel) lightningScalePanel.classList.toggle('visible',showLightning);
+    clampScalePanels();
+}
+
+function clampScalePanel(panel){
+    if(!panel || !panel.classList.contains('visible')) return;
+    const rect=panel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    panel.style.transform='none';
+    panel.style.left=left+"px";
+    panel.style.top=top+"px";
+}
+
+function clampScalePanels(){
+    clampScalePanel(precipScalePanel);
+    clampScalePanel(lightningScalePanel);
+}
+
+function beginScalePanelDrag(panel,e){
+    if(e.button !== 0) return;
+
+    const rect=panel.getBoundingClientRect();
+    panel.style.transform='none';
+    panel.style.left=rect.left+"px";
+    panel.style.top=rect.top+"px";
+    panel.classList.add('is-dragging');
+
+    isDraggingScalePanel=true;
+    scalePanelDragTarget=panel;
+    scalePanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+}
+
+if(precipScaleHeader && precipScalePanel){
+    precipScaleHeader.addEventListener('mousedown',(e)=>beginScalePanelDrag(precipScalePanel,e));
+}
+
+if(lightningScaleHeader && lightningScalePanel){
+    lightningScaleHeader.addEventListener('mousedown',(e)=>beginScalePanelDrag(lightningScalePanel,e));
+}
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingScalePanel || !scalePanelDragTarget) return;
+
+    const rect=scalePanelDragTarget.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-scalePanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-scalePanelDragOffset.y,0),maxTop);
+
+    scalePanelDragTarget.style.left=left+"px";
+    scalePanelDragTarget.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    if(scalePanelDragTarget) scalePanelDragTarget.classList.remove('is-dragging');
+    isDraggingScalePanel=false;
+    scalePanelDragTarget=null;
+});
 
 function openPrecipPanel(){
     precipPanel.classList.add('open');
@@ -4148,8 +4896,43 @@ function createPrecipLayer(opacity=precipOpacity.value/100){
     });
 }
 
+function getPrecipLayerName(){
+    const range=precipRangeSelector.value;
+    return PRECIP_WMS_LAYERS[range] || PRECIP_WMS_LAYERS["1h"];
+}
+
+function getPrecipLegendUrl(){
+    const params=new URLSearchParams({
+        SERVICE:"WMS",
+        VERSION:"1.3.0",
+        REQUEST:"GetLegendGraphic",
+        FORMAT:"image/png",
+        LAYER:getPrecipLayerName(),
+        STYLE:""
+    });
+    return PRECIP_WMS_URL + "?" + params.toString();
+}
+
+function updatePrecipLegend(){
+    if(!precipLegendImage || !precipLegendFallback) return;
+    precipLegendFallback.hidden=true;
+    precipLegendImage.hidden=false;
+    precipLegendImage.src=getPrecipLegendUrl();
+}
+
+if(precipLegendImage){
+    precipLegendImage.addEventListener("error",()=>{
+        precipLegendImage.hidden=true;
+        if(precipLegendFallback) precipLegendFallback.hidden=false;
+    });
+}
+
 function refreshPrecipLayer(){
     if(!precipToggle.checked) return;
+    if(historyModeActive){
+        disablePrecipLayer("Disabled in history mode");
+        return;
+    }
 
     const token=++precipRefreshToken;
     const previousLayer=precipLayer;
@@ -4202,25 +4985,241 @@ function refreshPrecipLayer(){
 function togglePrecipLayer(){
     precipRefreshToken++;
     if(precipToggle.checked){
+        if(historyModeActive){
+            disablePrecipLayer("Disabled in history mode");
+            return;
+        }
         precipButton.classList.add('active');
+        updateMapScalePanelVisibility();
         refreshPrecipLayer();
     } else {
-        precipButton.classList.remove('active');
-        if(precipLayer){
-            map.removeLayer(precipLayer);
-            precipLayer=null;
-        }
-        precipStatus.textContent="Off";
+        disablePrecipLayer("Off");
     }
 }
 
+function disablePrecipLayer(statusText="Off"){
+    precipRefreshToken++;
+    precipToggle.checked=false;
+    precipButton.classList.remove('active');
+    if(precipLayer){
+        map.removeLayer(precipLayer);
+        precipLayer=null;
+    }
+    precipStatus.textContent=statusText;
+    updateMapScalePanelVisibility();
+}
+
 function changePrecipRange(){
+    updatePrecipLegend();
     if(precipToggle.checked) refreshPrecipLayer();
 }
 
 function updatePrecipOpacity(){
     if(precipLayer) precipLayer.setOpacity(precipOpacity.value/100);
 }
+
+updatePrecipLegend();
+
+// ===== LIGHTNING =====
+const lightningPanel=document.getElementById('lightningPanel');
+const lightningHeader=document.getElementById('lightningHeader');
+const lightningButton=document.getElementById('lightningButton');
+const lightningStatus=document.getElementById('lightningStatus');
+const lightningLegendImage=document.getElementById('lightningLegendImage');
+
+function openLightningPanel(){
+    lightningPanel.classList.add('open');
+    clampLightningPanel();
+}
+
+function closeLightningPanel(){
+    lightningPanel.classList.remove('open');
+}
+
+function toggleLightningPanel(){
+    if(lightningPanel.classList.contains('open')){
+        closeLightningPanel();
+    } else {
+        openLightningPanel();
+    }
+}
+
+function clampLightningPanel(){
+    const rect=lightningPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    lightningPanel.style.left=left+"px";
+    lightningPanel.style.top=top+"px";
+}
+
+lightningHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=lightningPanel.getBoundingClientRect();
+    lightningPanel.style.left=rect.left+"px";
+    lightningPanel.style.top=rect.top+"px";
+
+    isDraggingLightningPanel=true;
+    lightningPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingLightningPanel) return;
+
+    const rect=lightningPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-lightningPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-lightningPanelDragOffset.y,0),maxTop);
+
+    lightningPanel.style.left=left+"px";
+    lightningPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingLightningPanel=false;
+});
+
+function createLightningLayer(opacity=lightningOpacity.value/100){
+    return L.tileLayer.wms(LIGHTNING_WMS_URL,{
+        layers:LIGHTNING_WMS_LAYER,
+        styles:LIGHTNING_WMS_STYLE,
+        format:"image/png",
+        transparent:true,
+        version:"1.3.0",
+        pane:"lightningPane",
+        opacity:opacity,
+        tileSize:512,
+        keepBuffer:4,
+        updateWhenIdle:true,
+        updateWhenZooming:false,
+        detectRetina:false,
+        crossOrigin:true,
+        _t:Date.now(),
+        attribution:"NOAA nowCOAST lightning density"
+    });
+}
+
+function getLightningLegendUrl(){
+    const params=new URLSearchParams({
+        SERVICE:"WMS",
+        VERSION:"1.3.0",
+        REQUEST:"GetLegendGraphic",
+        FORMAT:"image/png",
+        LAYER:LIGHTNING_WMS_LAYER,
+        STYLE:LIGHTNING_WMS_STYLE
+    });
+    return LIGHTNING_WMS_URL + "?" + params.toString();
+}
+
+function refreshLightningLayer(){
+    if(!lightningToggle.checked) return;
+    if(historyModeActive){
+        disableLightningLayer("Disabled in history mode");
+        return;
+    }
+
+    const token=++lightningRefreshToken;
+    const previousLayer=lightningLayer;
+    lightningStatus.textContent="Loading latest...";
+    const nextLayer=createLightningLayer(previousLayer ? 0 : lightningOpacity.value/100);
+    let tileErrors=0;
+
+    nextLayer.once("load",()=>{
+        if(token !== lightningRefreshToken || !lightningToggle.checked){
+            map.removeLayer(nextLayer);
+            return;
+        }
+        if(previousLayer && map.hasLayer(previousLayer)) map.removeLayer(previousLayer);
+        nextLayer.setOpacity(lightningOpacity.value/100);
+        lightningLayer=nextLayer;
+        lightningStatus.textContent=tileErrors
+            ? "Loaded, some tiles retrying"
+            : "Loaded " + new Date().toLocaleTimeString();
+    });
+
+    nextLayer.on("tileerror",(event)=>{
+        const tile=event.tile;
+        const retries=Number(tile.dataset.lightningRetries || 0);
+        if(retries < LIGHTNING_TILE_RETRY_LIMIT){
+            tile.dataset.lightningRetries=String(retries + 1);
+            const retryUrl=tile.src.replace(/([?&])_retry=\d+(&|$)/,"$1").replace(/[?&]$/,"");
+            const separator=retryUrl.includes("?") ? "&" : "?";
+            setTimeout(()=>{
+                if(token === lightningRefreshToken && lightningToggle.checked){
+                    tile.src=retryUrl + separator + "_retry=" + (retries + 1) + "_" + Date.now();
+                }
+            },600 * (retries + 1));
+            return;
+        }
+
+        tileErrors++;
+        if(token === lightningRefreshToken){
+            lightningStatus.textContent=previousLayer
+                ? "NOAA nowCOAST slow, keeping previous layer"
+                : "NOAA nowCOAST tiles loading slowly";
+            console.warn("Unable to load NOAA nowCOAST lightning tile");
+        }
+    });
+
+    nextLayer.addTo(map);
+    if(!previousLayer) lightningLayer=nextLayer;
+}
+
+function startLightningRefreshTimer(){
+    if(lightningRefreshTimer) clearInterval(lightningRefreshTimer);
+    lightningRefreshTimer=setInterval(()=>{
+        if(lightningToggle.checked && !historyModeActive) refreshLightningLayer();
+    },LIGHTNING_REFRESH_INTERVAL);
+}
+
+function toggleLightningLayer(){
+    lightningRefreshToken++;
+    if(lightningToggle.checked){
+        if(historyModeActive){
+            disableLightningLayer("Disabled in history mode");
+            return;
+        }
+        lightningButton.classList.add('active');
+        updateMapScalePanelVisibility();
+        refreshLightningLayer();
+        startLightningRefreshTimer();
+    } else {
+        disableLightningLayer("Off");
+    }
+}
+
+function disableLightningLayer(statusText="Off"){
+    lightningRefreshToken++;
+    lightningToggle.checked=false;
+    lightningButton.classList.remove('active');
+    if(lightningLayer){
+        map.removeLayer(lightningLayer);
+        lightningLayer=null;
+    }
+    lightningStatus.textContent=statusText;
+    updateMapScalePanelVisibility();
+}
+
+function updateLightningOpacity(){
+    if(lightningLayer) lightningLayer.setOpacity(lightningOpacity.value/100);
+}
+
+function disableLiveOnlyOverlays(statusText="Disabled in history mode"){
+    if(precipToggle.checked || precipLayer) disablePrecipLayer(statusText);
+    if(lightningToggle.checked || lightningLayer) disableLightningLayer(statusText);
+}
+
+if(lightningLegendImage) lightningLegendImage.src=getLightningLegendUrl();
+updateMapScalePanelVisibility();
+startLightningRefreshTimer();
 
 function updateMapOpacity(){
     const val=document.getElementById("mapOpacity").value;
@@ -4246,6 +5245,7 @@ function switchMapType(){
 }
 
 // ===== INIT =====
+setStartupStatus("counties","Counties: loading");
 fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
 .then(r=>r.json())
 .then(g=>{
@@ -4254,10 +5254,25 @@ fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties
     geojsonData.features.forEach(feature=>{
         countyFeatureByFips[getFips(feature)]=feature;
     });
-    refresh();
     startWeatherRefreshTimer();
+    setStartupStatus("counties","Counties: loading alerts");
+    refresh()
+        .then(()=>{
+            setStartupStatus("counties","Counties: colorized","done");
+            startHistoryBackgroundCachesAfterFirstMapPaint();
+        })
+        .catch(error=>{
+            setStartupStatus("counties","Alerts: unavailable","error");
+            console.warn("Unable to load initial alerts",error);
+            startHistoryBackgroundCachesAfterFirstMapPaint();
+        });
+})
+.catch(error=>{
+    setStartupStatus("counties","Counties: unavailable","error");
+    console.warn("Unable to load county geography",error);
 });
 
+setStartupStatus("states","States: loading");
 fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
 .then(r=>r.json())
 .then(states=>{
@@ -4272,6 +5287,11 @@ fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geo
         startCurrentLocationCross();
     }
     updateStateBorderWeight();
+    setStartupStatus("states","States: loaded","done");
+})
+.catch(error=>{
+    setStartupStatus("states","States: unavailable","error");
+    console.warn("Unable to load state geography",error);
 });
 
 startRadarRefreshTimer();
@@ -4442,6 +5462,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('lightningPanel').classList.contains('open')) {
+        closeLightningPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('plotPanel').classList.contains('open')) {
         closePlotPanel();
         return;
@@ -4508,6 +5533,10 @@ document.addEventListener('keydown', (e) => {
     } else if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
         togglePrecipPanel();
+        return;
+    } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        toggleLightningPanel();
         return;
     } else if (e.key === 'c' || e.key === 'C') {
         countyColorizationEnabled = !countyColorizationEnabled;
