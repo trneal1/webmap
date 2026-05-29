@@ -1272,6 +1272,7 @@ body.history-active #historyMapBadges {
     <label>Radar updates (min) <input id="radarUpdateMinutes" type="number" min="0.1" step="0.1" value="5" onchange="applySetupSettings()"></label>
     <label>Record history <input id="historyRecordingToggle" type="checkbox" checked onchange="applySetupSettings()"></label>
     <label>Weather updates per history frame <input id="historyFrameWeatherUpdates" type="number" min="1" max="1440" step="1" value="1" onchange="applySetupSettings()"></label>
+    <label>Days of history <input id="historyRetentionDays" type="number" min="1" max="365" step="1" value="7" onchange="applySetupSettings()"></label>
     <label>Label location
       <span class="coordinate-fields">
         <input id="labelLocationLat" type="number" min="-90" max="90" step="0.000001" placeholder="Lat" onchange="applySetupSettings()">
@@ -1626,13 +1627,13 @@ let radarRefreshTimer = null;
 let lightningRefreshTimer = null;
 let historyRecordingEnabled = true;
 let historyFrameWeatherUpdates = 1;
+let historyRetentionDays = 7;
 let weatherUpdatesSinceHistoryFrame = 0;
 const SETUP_SETTINGS_KEY = "nwsDashboardSetupSettings";
 const HISTORY_DB_NAME = "nwsDashboardHistory";
 const HISTORY_DB_VERSION = 2;
 const HISTORY_STORE_NAME = "snapshots";
 const RADAR_TILE_STORE_NAME = "radarTiles";
-const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_FRAME_DEDUP_MS = 60000;
 const RADAR_TILE_URL = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png";
 const HISTORY_RADAR_WMS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi";
@@ -1986,6 +1987,7 @@ const weatherUpdateMinutes=document.getElementById('weatherUpdateMinutes');
 const radarUpdateMinutes=document.getElementById('radarUpdateMinutes');
 const historyRecordingToggle=document.getElementById('historyRecordingToggle');
 const historyFrameWeatherUpdatesInput=document.getElementById('historyFrameWeatherUpdates');
+const historyRetentionDaysInput=document.getElementById('historyRetentionDays');
 const labelLocationLatInput=document.getElementById('labelLocationLat');
 const labelLocationLonInput=document.getElementById('labelLocationLon');
 
@@ -1996,12 +1998,14 @@ function loadSetupSettings(){
         radarUpdateInterval=clampNumber(settings.radarUpdateMinutes,0.1,1440,5) * 60000;
         historyRecordingEnabled=settings.historyRecordingEnabled !== false;
         historyFrameWeatherUpdates=Math.round(clampNumber(settings.historyFrameWeatherUpdates,1,1440,1));
+        historyRetentionDays=Math.round(clampNumber(settings.historyRetentionDays,1,365,7));
         labelLocationLatLng=getValidLatLng(settings.labelLocationLat,settings.labelLocationLon);
     }catch(error){
         weatherUpdateInterval=60000;
         radarUpdateInterval=300000;
         historyRecordingEnabled=true;
         historyFrameWeatherUpdates=1;
+        historyRetentionDays=7;
         labelLocationLatLng=null;
     }
 }
@@ -2012,6 +2016,7 @@ function saveSetupSettings(){
         radarUpdateMinutes:radarUpdateInterval / 60000,
         historyRecordingEnabled,
         historyFrameWeatherUpdates,
+        historyRetentionDays,
         labelLocationLat:labelLocationLatLng ? labelLocationLatLng[0] : "",
         labelLocationLon:labelLocationLatLng ? labelLocationLatLng[1] : ""
     }));
@@ -2022,6 +2027,7 @@ function syncSetupControls(){
     radarUpdateMinutes.value=String(radarUpdateInterval / 60000);
     historyRecordingToggle.checked=historyRecordingEnabled;
     historyFrameWeatherUpdatesInput.value=String(historyFrameWeatherUpdates);
+    historyRetentionDaysInput.value=String(historyRetentionDays);
     labelLocationLatInput.value=labelLocationLatLng ? String(labelLocationLatLng[0]) : "";
     labelLocationLonInput.value=labelLocationLatLng ? String(labelLocationLatLng[1]) : "";
 }
@@ -2041,10 +2047,12 @@ function startRadarRefreshTimer(){
 }
 
 function applySetupSettings(){
+    const previousHistoryRetentionDays=historyRetentionDays;
     weatherUpdateInterval=clampNumber(weatherUpdateMinutes.value,0.1,1440,1) * 60000;
     radarUpdateInterval=clampNumber(radarUpdateMinutes.value,0.1,1440,5) * 60000;
     historyRecordingEnabled=historyRecordingToggle.checked;
     historyFrameWeatherUpdates=Math.round(clampNumber(historyFrameWeatherUpdatesInput.value,1,1440,1));
+    historyRetentionDays=Math.round(clampNumber(historyRetentionDaysInput.value,1,365,7));
     labelLocationLatLng=getValidLatLng(labelLocationLatInput.value,labelLocationLonInput.value);
     weatherUpdatesSinceHistoryFrame=0;
     syncSetupControls();
@@ -2052,6 +2060,11 @@ function applySetupSettings(){
     startWeatherRefreshTimer();
     startRadarRefreshTimer();
     if(stateLabelsVisible) updateCurrentLocationMarker();
+    if(historyRetentionDays !== previousHistoryRetentionDays){
+        refreshHistoryRetentionWindow().catch(error=>{
+            console.warn("Unable to refresh history retention window",error);
+        });
+    }
 }
 
 function resetSetupSettings(){
@@ -2059,6 +2072,7 @@ function resetSetupSettings(){
     radarUpdateInterval=300000;
     historyRecordingEnabled=true;
     historyFrameWeatherUpdates=1;
+    historyRetentionDays=7;
     labelLocationLatLng=null;
     weatherUpdatesSinceHistoryFrame=0;
     syncSetupControls();
@@ -2222,6 +2236,10 @@ function getFips(f){ return (f.id || (f.properties.STATE + f.properties.COUNTY))
 
 function getActiveTimestamp(){
     return historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : Date.now();
+}
+
+function getHistoryRetentionMs(){
+    return historyRetentionDays * 24 * 60 * 60 * 1000;
 }
 
 function clampNumber(value,min,max,fallback){
@@ -2455,6 +2473,14 @@ async function pruneOldRadarTiles(cutoff){
     }
 }
 
+async function pruneOldHistorySnapshots(){
+    const cutoff=Date.now() - getHistoryRetentionMs();
+    await withHistoryStore("readwrite",(store)=>{
+        store.delete(IDBKeyRange.upperBound(cutoff));
+    });
+    await pruneOldRadarTiles(cutoff);
+}
+
 async function getStoredRadarTileBlob(frameId,coords){
     let blob=null;
     await withHistoryStore("readonly",(store)=>{
@@ -2490,7 +2516,7 @@ async function saveHistorySnapshot(alerts,timestamp=Date.now()){
 
         await withHistoryStore("readwrite",(store)=>{
             store.put(snapshot);
-            store.delete(IDBKeyRange.upperBound(timestamp - HISTORY_RETENTION_MS));
+            store.delete(IDBKeyRange.upperBound(timestamp - getHistoryRetentionMs()));
         });
         updateHistoryCachesWithSnapshot(snapshot);
     }catch(error){
@@ -2531,7 +2557,7 @@ function mergeHistoryIndexFrames(frames){
 }
 
 function getCachedHistorySnapshots(sinceTimestamp=null){
-    const cutoff=Date.now() - HISTORY_RETENTION_MS;
+    const cutoff=Date.now() - getHistoryRetentionMs();
     return historyIndexCache.filter(frame=>{
         if(!frame || !Number.isFinite(frame.timestamp)) return false;
         if(frame.timestamp < cutoff) return false;
@@ -2541,7 +2567,7 @@ function getCachedHistorySnapshots(sinceTimestamp=null){
 }
 
 function getCachedPlotHistoryFrames(sinceTimestamp=null){
-    const cutoff=Date.now() - HISTORY_RETENTION_MS;
+    const cutoff=Date.now() - getHistoryRetentionMs();
     const frames=(plotHistoryCache.frames || []).filter(frame=>{
         if(!frame || !Number.isFinite(frame.timestamp)) return false;
         if(frame.timestamp < cutoff) return false;
@@ -2552,6 +2578,49 @@ function getCachedPlotHistoryFrames(sinceTimestamp=null){
         frames,
         titleCounts:getPlotTitleCountsFromFrames(frames)
     };
+}
+
+async function refreshHistoryRetentionWindow(){
+    if(historyIndexLoading || plotHistoryLoading){
+        setTimeout(()=>{
+            refreshHistoryRetentionWindow().catch(error=>{
+                console.warn("Unable to refresh history retention window",error);
+            });
+        },250);
+        return;
+    }
+
+    await pruneOldHistorySnapshots();
+    historyFrameCache.clear();
+    historyIndexCache=[];
+    historyIndexReady=false;
+    historyIndexLoadPromise=null;
+    plotHistoryCache={ frames:[], titleCounts:new Map() };
+    plotHistoryReady=false;
+    plotHistoryLoadPromise=null;
+
+    const shouldRefreshOpenHistory=historyPanel.classList.contains('open');
+    if(shouldRefreshOpenHistory){
+        historyPanelLoading=true;
+        historyFrames=[];
+        historyStart.value="";
+        historyStop.value="";
+        updateHistoryPanelState();
+        await nextPaint();
+    }
+
+    await startHistoryIndexBackgroundLoad();
+    await startPlotHistoryBackgroundLoad();
+
+    if(shouldRefreshOpenHistory){
+        historyPanelLoading=false;
+        historyFrames=getCachedHistorySnapshots();
+        updateHistoryPanelState();
+        if(historyFrames.length){
+            await showHistoryFrame(historyFrames.length - 1);
+        }
+    }
+    syncOpenPlotPanelFromCache();
 }
 
 function syncOpenHistoryPanelFromCache(){
@@ -2635,7 +2704,7 @@ function normalizeHistoryFrames(frames){
 async function loadHistorySnapshotsFromDb(sinceTimestamp=null,onProgress=null){
     try{
         let frames=[];
-        const cutoff=Date.now() - HISTORY_RETENTION_MS;
+        const cutoff=Date.now() - getHistoryRetentionMs();
         const lowerBound=Number.isFinite(sinceTimestamp)
             ? Math.max(cutoff,sinceTimestamp + 1)
             : cutoff;
@@ -2714,7 +2783,7 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
     let directError=null;
     try{
         const frames=[];
-        const cutoff=Date.now() - HISTORY_RETENTION_MS;
+        const cutoff=Date.now() - getHistoryRetentionMs();
         const lowerBound=Number.isFinite(sinceTimestamp)
             ? Math.max(cutoff,sinceTimestamp + 1)
             : cutoff;
