@@ -2627,10 +2627,14 @@ function syncOpenHistoryPanelFromCache(){
     if(!historyPanel.classList.contains('open') || historyPanelLoading) return;
     const cachedFrames=getCachedHistorySnapshots();
     const previousLatestTimestamp=historyFrames[historyFrames.length - 1]?.timestamp;
+    const shouldExtendStop=shouldAutoExtendHistoryStop(previousLatestTimestamp);
     const wasEmpty=!historyFrames.length;
     const wasAtLatest=wasEmpty || (Number(historySlider.value) || 0) === historyFrames.length - 1;
 
     historyFrames=cachedFrames;
+    if(shouldExtendStop && historyFrames.length){
+        historyStop.value=formatDateTimeLocal(historyFrames[historyFrames.length - 1].timestamp);
+    }
     updateHistoryPanelState();
     if(wasAtLatest && historyFrames.length && historyFrames[historyFrames.length - 1].timestamp !== previousLatestTimestamp){
         showHistoryFrame(historyFrames.length - 1).catch(error=>{
