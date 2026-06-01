@@ -131,6 +131,12 @@ body { margin:0; display:flex; height:100vh; overflow:hidden; font-family:Arial;
     align-items:center;
     justify-content:space-between;
     gap:10px;
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:#fff;
+    padding-bottom:8px;
+    border-bottom:1px solid #ccc;
 }
 
 #sidebarHeader h3 {
@@ -614,7 +620,8 @@ body.history-active #historyMapBadges {
     transform:translateX(-50%);
     z-index:2200;
     display:none;
-    width:min(380px, calc(100vw - 28px));
+    width:min(520px, calc(100vw - 28px));
+    max-height:calc(100vh - 96px);
     background:#fff;
     border:1px solid #333;
     border-radius:6px;
@@ -655,8 +662,10 @@ body.history-active #historyMapBadges {
 
 #setupBody {
     display:grid;
-    gap:10px;
+    gap:12px;
     padding:10px;
+    max-height:calc(100vh - 150px);
+    overflow:auto;
 }
 
 #setupBody label {
@@ -678,6 +687,48 @@ body.history-active #historyMapBadges {
 
 #setupBody .coordinate-fields input[type="number"] {
     width:82px;
+}
+
+.setupSection {
+    display:grid;
+    gap:8px;
+    padding-bottom:10px;
+    border-bottom:1px solid #ddd;
+}
+
+.setupSection:last-child {
+    border-bottom:0;
+    padding-bottom:0;
+}
+
+.setupSection h4 {
+    margin:0;
+    font-size:13px;
+}
+
+.setupInlineControls,
+.setupFieldChoices {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 12px;
+    align-items:center;
+}
+
+#setupBody .setupInlineControls label,
+#setupBody .setupFieldChoices label {
+    display:inline-flex;
+    justify-content:flex-start;
+    gap:5px;
+}
+
+#setupBody input[type="search"],
+#setupBody select {
+    font-size:12px;
+}
+
+#searchFilter {
+    min-width:190px;
+    flex:1;
 }
 
 #setupActions {
@@ -1362,19 +1413,69 @@ body.history-active #historyMapBadges {
     <button id="closeSetup" type="button" onclick="closeSetupPanel()" aria-label="Close setup" title="Close">&times;</button>
   </div>
   <div id="setupBody">
-    <label>Weather updates (min) <input id="weatherUpdateMinutes" type="number" min="0.1" step="0.1" value="1" onchange="applySetupSettings()"></label>
-    <label>Radar updates (min) <input id="radarUpdateMinutes" type="number" min="0.1" step="0.1" value="5" onchange="applySetupSettings()"></label>
-    <label>Record history <input id="historyRecordingToggle" type="checkbox" checked onchange="applySetupSettings()"></label>
-    <label>Weather updates per history frame <input id="historyFrameWeatherUpdates" type="number" min="1" max="1440" step="1" value="1" onchange="applySetupSettings()"></label>
-    <label>Days of history <input id="historyRetentionDays" type="number" min="1" max="365" step="1" value="7" onchange="applySetupSettings()"></label>
-    <label>Label location
-      <span class="coordinate-fields">
-        <input id="labelLocationLat" type="number" min="-90" max="90" step="0.000001" placeholder="Lat" onchange="applySetupSettings()">
-        <input id="labelLocationLon" type="number" min="-180" max="180" step="0.000001" placeholder="Lon" onchange="applySetupSettings()">
-      </span>
-    </label>
+    <div class="setupSection">
+      <h4>Updates</h4>
+      <label>Weather updates (min) <input id="weatherUpdateMinutes" type="number" min="0.1" step="0.1" value="1" onchange="applySetupSettings()"></label>
+      <label>Radar updates (min) <input id="radarUpdateMinutes" type="number" min="0.1" step="0.1" value="5" onchange="applySetupSettings()"></label>
+      <label>Record history <input id="historyRecordingToggle" type="checkbox" checked onchange="applySetupSettings()"></label>
+      <label>Weather updates per history frame <input id="historyFrameWeatherUpdates" type="number" min="1" max="1440" step="1" value="1" onchange="applySetupSettings()"></label>
+      <label>Days of history <input id="historyRetentionDays" type="number" min="1" max="365" step="1" value="7" onchange="applySetupSettings()"></label>
+      <label>Label location
+        <span class="coordinate-fields">
+          <input id="labelLocationLat" type="number" min="-90" max="90" step="0.000001" placeholder="Lat" onchange="applySetupSettings()">
+          <input id="labelLocationLon" type="number" min="-180" max="180" step="0.000001" placeholder="Lon" onchange="applySetupSettings()">
+        </span>
+      </label>
+    </div>
+
+    <div class="setupSection">
+      <h4>Filters</h4>
+      <div class="setupInlineControls">
+        <label>Severity
+          <select id="severityFilter" onchange="applyFilters()">
+            <option value="">All</option>
+            <option>Extreme</option>
+            <option>Severe</option>
+            <option>Moderate</option>
+            <option>Minor</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="expiredOnlyToggle" onchange="applyFilters()"> Expired only</label>
+      </div>
+      <div class="setupFieldChoices" aria-label="Search fields">
+        <b>Search Fields</b>
+        <label><input type="checkbox" id="field_event" checked> Event</label>
+        <label><input type="checkbox" id="field_headline" checked> Headline</label>
+        <label><input type="checkbox" id="field_description" checked> Description</label>
+        <label><input type="checkbox" id="field_area" checked> Area</label>
+        <label><input type="checkbox" id="field_id"> Alert ID</label>
+      </div>
+      <div class="setupInlineControls">
+        <label>Search <input id="searchFilter" type="search" placeholder="Use & | ! ( )"></label>
+        <button type="button" onclick="applyFilters()">Apply</button>
+        <button type="button" onclick="clearSearch()">Clear</button>
+      </div>
+    </div>
+
+    <div class="setupSection">
+      <h4>Display</h4>
+      <label><input type="checkbox" id="blinkToggle" checked onchange="redrawMap()"> Blink recent alerts</label>
+      <label><input type="checkbox" id="showEventsToggle" onchange="redrawMap()"> Show Event Names</label>
+      <label>Map Opacity <input type="range" id="mapOpacity" min="0" max="100" value="100" oninput="updateMapOpacity()"></label>
+      <label>County Opacity <input type="range" id="countyOpacity" min="0" max="100" value="70" oninput="updateCountyOpacity()"></label>
+      <label><input type="checkbox" id="radarToggle" onchange="toggleRadar()"> Radar</label>
+      <label>Radar Opacity <input type="range" id="radarOpacity" min="0" max="100" value="60" oninput="updateRadarOpacity()"></label>
+      <label>Map Type
+        <select id="mapTypeSelector" onchange="switchMapType()">
+          <option value="Street" selected>Street</option>
+          <option value="Topological">Topological</option>
+        </select>
+      </label>
+    </div>
+
     <div id="setupActions">
       <button type="button" onclick="resetSetupSettings()">Defaults</button>
+      <button id="shortcutHelpButton" type="button" onclick="toggleShortcutHelpPanel()" title="Keyboard shortcuts">Help</button>
       <button type="button" onclick="closeSetupPanel()">Close</button>
     </div>
 </div>
@@ -1502,8 +1603,20 @@ body.history-active #historyMapBadges {
   </div>
   <div id="historyMapBody">
     <div id="historyMapControls">
-      <label>Start <input id="historyMapStart" type="datetime-local" onchange="applyHistoryMapFromControls()"></label>
-      <label>Stop <input id="historyMapStop" type="datetime-local" onchange="applyHistoryMapFromControls()"></label>
+      <label>Quick time
+        <select id="historyMapQuickRange" onchange="setHistoryMapQuickRange(this.value)">
+          <option value="">Custom</option>
+          <option value="1">Last 1 hr</option>
+          <option value="2">Last 2 hr</option>
+          <option value="6">Last 6 hr</option>
+          <option value="12">Last 12 hr</option>
+          <option value="24">Last 24 hr</option>
+          <option value="48">Last 48 hr</option>
+          <option value="96">Last 96 hr</option>
+        </select>
+      </label>
+      <label>Start <input id="historyMapStart" type="datetime-local" onchange="clearHistoryMapQuickRange(); applyHistoryMapFromControls()"></label>
+      <label>Stop <input id="historyMapStop" type="datetime-local" onchange="clearHistoryMapQuickRange(); applyHistoryMapFromControls()"></label>
       <label>Event titles
         <select id="historyMapEventTypes" multiple onchange="applyHistoryMapFromControls()"></select>
       </label>
@@ -1590,72 +1703,16 @@ body.history-active #historyMapBadges {
   <button id="restoreHistoryButton" type="button" onclick="restoreHistoryPanel()">History Playback</button>
 </div>
 
-<button id="openSidebar" type="button" onclick="openSidebar()" title="Open sidebar">Filters</button>
+<button id="openSidebar" type="button" onclick="openSidebar()" title="Open details">Details</button>
 
 <div id="sidebar">
 
 <div id="sidebarHeader">
-<h3>Filters</h3>
+<h3>Details</h3>
 <span>
-<button id="shortcutHelpButton" type="button" onclick="toggleShortcutHelpPanel()" title="Keyboard shortcuts">Help</button>
 <button id="closeSidebar" type="button" onclick="closeSidebar()" aria-label="Close sidebar" title="Close sidebar">&times;</button>
 </span>
 </div>
-
-Severity:
-<select id="severityFilter" onchange="applyFilters()">
-<option value="">All</option>
-<option>Extreme</option>
-<option>Severe</option>
-<option>Moderate</option>
-<option>Minor</option>
-</select>
-
-<label>
-<input type="checkbox" id="expiredOnlyToggle" onchange="applyFilters()">
-Expired only
-</label>
-
-<hr>
-
-<b>Search Fields</b>
-<label><input type="checkbox" id="field_event" checked> Event</label>
-<label><input type="checkbox" id="field_headline" checked> Headline</label>
-<label><input type="checkbox" id="field_description" checked> Description</label>
-<label><input type="checkbox" id="field_area" checked> Area</label>
-<label><input type="checkbox" id="field_id"> Alert ID</label>
-
-Search: <input id="searchFilter" placeholder="Use & | ! ( )">
-
-<button onclick="applyFilters()">Apply</button>
-<button onclick="clearSearch()">Clear</button>
-
-<hr>
-
-<div class="compact">
-<b>Display</b>
-
-<label><input type="checkbox" id="blinkToggle" checked onchange="redrawMap()"> Blink recent alerts</label>
-<label><input type="checkbox" id="showEventsToggle" onchange="redrawMap()"> Show Event Names</label>
-
-<label>Map Opacity <input type="range" id="mapOpacity" min="0" max="100" value="100" oninput="updateMapOpacity()"></label>
-
-<label>County Opacity <input type="range" id="countyOpacity" min="0" max="100" value="70" oninput="updateCountyOpacity()"> </label>
-
-<label><input type="checkbox" id="radarToggle" onchange="toggleRadar()"> Radar</label>
-
-<label>Radar Opacity <input type="range" id="radarOpacity" min="0" max="100" value="60" oninput="updateRadarOpacity()"> </label>
-
-<label>Map Type:
-<select id="mapTypeSelector" onchange="switchMapType()">
-<option value="Street" selected>Street</option>
-<option value="Topological">Topological</option>
-</select>
-</label>
-
-</div>
-
-<hr>
 
 <div id="content">Click a county</div>
 
@@ -1747,6 +1804,7 @@ let historyMapCacheLoading = false;
 let historyMapCacheLoadPromise = null;
 let historyMapSidebarLoadToken = 0;
 let historyMapSidebarCache = new Map();
+let historyMapSuppressedLiveState = null;
 const HISTORY_MAP_SIDEBAR_CACHE_LIMIT = 8;
 let plotHistoryCache = {
     frames:[],
@@ -2034,6 +2092,7 @@ const plotStatus=document.getElementById('plotStatus');
 const plotHint=document.getElementById('plotHint');
 const historyMapPanel=document.getElementById('historyMapPanel');
 const historyMapHeader=document.getElementById('historyMapHeader');
+const historyMapQuickRange=document.getElementById('historyMapQuickRange');
 const historyMapStart=document.getElementById('historyMapStart');
 const historyMapStop=document.getElementById('historyMapStop');
 const historyMapPanelStatus=document.getElementById('historyMapPanelStatus');
@@ -3435,6 +3494,38 @@ function cacheHistoryMapSidebarHtml(key,html){
     }
 }
 
+function suppressLiveAlertDisplayForHistoryMap(){
+    if(!historyMapSuppressedLiveState){
+        historyMapSuppressedLiveState={
+            radarEnabled:radarToggle.checked,
+            countyColorizationEnabled
+        };
+    }
+
+    radarToggle.checked=false;
+    if(radarLayer){
+        map.removeLayer(radarLayer);
+        radarLayer=null;
+    }
+    countyColorizationEnabled=false;
+}
+
+function restoreLiveAlertDisplayAfterHistoryMap(){
+    if(!historyMapSuppressedLiveState) return;
+
+    const previousState=historyMapSuppressedLiveState;
+    historyMapSuppressedLiveState=null;
+    countyColorizationEnabled=previousState.countyColorizationEnabled;
+    radarToggle.checked=previousState.radarEnabled;
+
+    if(previousState.radarEnabled && !historyModeActive){
+        reloadRadar();
+    } else if(radarLayer){
+        map.removeLayer(radarLayer);
+        radarLayer=null;
+    }
+}
+
 function updateHistoryMapBadges(){
     if(!historyMapActive) return;
     historyModeBadge.textContent="History Map";
@@ -3459,6 +3550,21 @@ function setHistoryMapRangeDefaultsFromCache(){
     if(!frames.length) return;
     if(!historyMapStart.value) historyMapStart.value=formatDateTimeLocal(frames[0].timestamp);
     if(!historyMapStop.value) historyMapStop.value=formatDateTimeLocal(frames[frames.length - 1].timestamp);
+}
+
+function clearHistoryMapQuickRange(){
+    if(historyMapQuickRange) historyMapQuickRange.value="";
+}
+
+function setHistoryMapQuickRange(hoursValue){
+    const hours=Number(hoursValue);
+    if(!Number.isFinite(hours) || hours <= 0) return;
+
+    const frames=getCachedHistoryMapFrames().frames;
+    const stop=frames.length ? frames[frames.length - 1].timestamp : Date.now();
+    historyMapStop.value=formatDateTimeLocal(stop);
+    historyMapStart.value=formatDateTimeLocal(stop - hours * 60 * 60 * 1000);
+    applyHistoryMapFromControls();
 }
 
 async function applyHistoryMapFromControls(){
@@ -3486,6 +3592,7 @@ async function applyHistoryMapFromControls(){
             clampHistoryMapPanel();
         }
         document.body.classList.add('history-active');
+        suppressLiveAlertDisplayForHistoryMap();
         historyMapActive=true;
         historyModeActive=true;
         historyFrameTimestamp=null;
@@ -3549,6 +3656,7 @@ async function applyHistoryMapFromControls(){
         historyFrameTimestamp=null;
         historyMapRangeLabel=new Date(frames[0].timestamp).toLocaleString() + " - " + new Date(frames[frames.length - 1].timestamp).toLocaleString();
         document.body.classList.add('history-active');
+        suppressLiveAlertDisplayForHistoryMap();
         disableLiveOnlyOverlays();
         updateHistoryMapBadges();
         redrawMap();
@@ -3595,6 +3703,8 @@ function openHistoryMapPanel(){
     minimizedPanels.historyMap=false;
     updatePanelRestoreDock();
     clampHistoryMapPanel();
+    suppressLiveAlertDisplayForHistoryMap();
+    redrawMap();
     setHistoryMapRangeDefaultsFromCache();
     populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
     clearHistoryMapEventTypes();
@@ -3625,7 +3735,7 @@ function restoreHistoryMapPanel(){
 }
 
 function exitHistoryMapMode(){
-    if(!historyMapActive) return;
+    if(!historyMapActive && !historyMapSuppressedLiveState) return;
     historyMapLoadToken++;
     historyMapActive=false;
     historyMapLoading=false;
@@ -3641,6 +3751,7 @@ function exitHistoryMapMode(){
     historyModeActive=false;
     historyFrameTimestamp=null;
     rawData=liveRawData;
+    restoreLiveAlertDisplayAfterHistoryMap();
     redrawMap();
     if(currentSidebarSelection){
         showSidebar(
@@ -4311,6 +4422,7 @@ async function clearHistorySnapshots(){
         historyMapCacheLoading=false;
         historyFrameLoadToken++;
         historyFrameTimestamp=null;
+        restoreLiveAlertDisplayAfterHistoryMap();
         historyMapLoadToken++;
         historyMapActive=false;
         historyMapLoading=false;
@@ -4467,6 +4579,7 @@ async function showHistoryFrame(index,options={}){
             historyMapFrameCount=0;
             historyMapRangeLabel="";
             setHistoryMapStatus("History map off.");
+            restoreLiveAlertDisplayAfterHistoryMap();
         }
         historyModeActive=true;
         historyFrameTimestamp=frame.timestamp;
@@ -6307,7 +6420,9 @@ function isFormControl(element) {
 
 function shouldIgnoreShortcutEvent(e) {
     const target = e.target;
-    return isFormControl(target) || (target.closest && target.closest('#sidebar') && !target.closest('#shortcutHelpButton'));
+    return isFormControl(target) ||
+        (target.closest && target.closest('#sidebar')) ||
+        (target.closest && target.closest('#setupPanel') && !target.closest('#shortcutHelpButton'));
 }
 
 function loadStoredMapViews() {
