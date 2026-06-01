@@ -5,7 +5,7 @@
 <title>NWS Dashboard</title>
 
 <style>
-body { margin:0; display:flex; font-family:Arial; }
+body { margin:0; display:flex; height:100vh; overflow:hidden; font-family:Arial; }
 #map { width:70%; height:100vh; position:relative; }
 #tornadoWarningBanner {
     position:absolute;
@@ -116,7 +116,15 @@ body { margin:0; display:flex; font-family:Arial; }
     color:#a00000;
 }
 #resizer { width:6px; cursor:col-resize; background:#ccc; }
-#sidebar { width:30%; padding:10px; overflow:auto; border-left:2px solid #333; }
+#sidebar {
+    width:30%;
+    height:100vh;
+    box-sizing:border-box;
+    padding:10px;
+    overflow-y:auto;
+    overflow-x:hidden;
+    border-left:2px solid #333;
+}
 
 #sidebarHeader {
     display:flex;
@@ -277,6 +285,7 @@ body.sidebar-closed #openSidebar {
 
 #eventFilterOverlay.minimized,
 #historyPanel.minimized,
+#historyMapPanel.minimized,
 #plotPanel.minimized {
     display:none !important;
 }
@@ -387,7 +396,8 @@ body.sidebar-closed #openSidebar {
     background:#eee;
 }
 
-#historyPanel {
+#historyPanel,
+#historyMapPanel {
     position:fixed;
     left:50%;
     bottom:18px;
@@ -402,7 +412,8 @@ body.sidebar-closed #openSidebar {
     font-size:12px;
 }
 
-#historyPanel.open {
+#historyPanel.open,
+#historyMapPanel.open {
     display:block;
 }
 
@@ -455,14 +466,17 @@ body.history-active #historyMapBadges {
     font-size:15px;
 }
 
-#historyStatus {
+#historyStatus,
+#historyMapPanelStatus {
     color:#444;
     font-family:monospace;
     margin-left:auto;
 }
 
 #minimizeHistory,
-#closeHistory {
+#closeHistory,
+#minimizeHistoryMap,
+#closeHistoryMap {
     width:28px;
     height:28px;
     border:1px solid #333;
@@ -515,6 +529,82 @@ body.history-active #historyMapBadges {
 #historyControls button:hover,
 #closeHistory:hover {
     background:#eee;
+}
+
+#historyMapControls {
+    display:grid;
+    grid-template-columns:minmax(180px, 1fr) auto;
+    gap:8px;
+    align-items:end;
+}
+
+#historyMapControls label {
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}
+
+#historyMapEventTypes {
+    min-height:72px;
+    font-size:12px;
+}
+
+#historyMapActions {
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    align-items:center;
+    justify-content:flex-end;
+}
+
+#historyMapActions button {
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+#historyMapActions button:hover {
+    background:#eee;
+}
+
+#historyMapStatus {
+    grid-column:1 / -1;
+    color:#444;
+    font-family:monospace;
+}
+
+#historyMapHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#historyMapHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#minimizeHistoryMap,
+#closeHistoryMap {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#historyMapBody {
+    padding:10px;
 }
 
 #setupPanel {
@@ -1228,6 +1318,10 @@ body.history-active #historyMapBadges {
         <span class="startup-status-label">Plot cache: waiting</span>
         <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressPlot" class="startup-task-progress-bar"></div></div>
       </div>
+      <div id="startupStatusHistoryMap" class="startup-status-item">
+        <span class="startup-status-label">History map: waiting</span>
+        <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressHistoryMap" class="startup-task-progress-bar"></div></div>
+      </div>
       <div id="startupStatusCounties" class="startup-status-item">Counties: waiting</div>
       <div id="startupStatusStates" class="startup-status-item">States: waiting</div>
     </div>
@@ -1298,6 +1392,7 @@ body.history-active #historyMapBadges {
         <kbd>?</kbd><span>Keyboard shortcuts</span>
         <kbd>S</kbd><span>Setup</span>
         <kbd>H</kbd><span>History playback</span>
+        <kbd>A</kbd><span>History alert-count map</span>
         <kbd>G</kbd><span>Event plot</span>
         <kbd>T</kbd><span>Event title filter</span>
         <kbd>Q</kbd><span>Precipitation controls</span>
@@ -1396,6 +1491,33 @@ body.history-active #historyMapBadges {
   </div>
 </div>
 
+<div id="historyMapPanel" role="dialog" aria-modal="false" aria-labelledby="historyMapTitle">
+  <div id="historyMapHeader">
+    <h3 id="historyMapTitle">History Alert Map</h3>
+    <span id="historyMapPanelStatus">No data</span>
+    <span class="panel-header-buttons">
+      <button id="minimizeHistoryMap" type="button" onclick="minimizeHistoryMapPanel()" aria-label="Minimize history alert map" title="Minimize">&minus;</button>
+      <button id="closeHistoryMap" type="button" onclick="closeHistoryMapPanel()" aria-label="Close history alert map" title="Close">&times;</button>
+    </span>
+  </div>
+  <div id="historyMapBody">
+    <div id="historyMapControls">
+      <label>Start <input id="historyMapStart" type="datetime-local" onchange="applyHistoryMapFromControls()"></label>
+      <label>Stop <input id="historyMapStop" type="datetime-local" onchange="applyHistoryMapFromControls()"></label>
+      <label>Event titles
+        <select id="historyMapEventTypes" multiple onchange="applyHistoryMapFromControls()"></select>
+      </label>
+      <div id="historyMapActions">
+        <button type="button" onclick="selectAllHistoryMapEventTypes()" title="Select all alert types">All</button>
+        <button type="button" onclick="clearHistoryMapEventTypes()" title="Clear alert type selection">None</button>
+        <button type="button" onclick="applyHistoryMapFromControls()" title="Colorize counties by alert counts">Map Counts</button>
+        <button type="button" onclick="closeHistoryMapPanel()" title="Return to live alert coloring">Close</button>
+      </div>
+      <div id="historyMapStatus">Press A to map alert counts for the selected period.</div>
+    </div>
+  </div>
+</div>
+
 <button id="precipButton" type="button" onclick="togglePrecipPanel()" title="Precipitation">Precip</button>
 
 <div id="precipPanel" role="dialog" aria-modal="false" aria-labelledby="precipTitle">
@@ -1464,6 +1586,7 @@ body.history-active #historyMapBadges {
 <div id="panelRestoreDock" aria-label="Minimized panels">
   <button id="restoreEventFilterButton" type="button" onclick="restoreEventFilterPopup()">Event Titles</button>
   <button id="restorePlotButton" type="button" onclick="restorePlotPanel()">Event Plot</button>
+  <button id="restoreHistoryMapButton" type="button" onclick="restoreHistoryMapPanel()">History Alert Map</button>
   <button id="restoreHistoryButton" type="button" onclick="restoreHistoryPanel()">History Playback</button>
 </div>
 
@@ -1606,6 +1729,25 @@ let historyIndexCache = [];
 let historyIndexReady = false;
 let historyIndexLoading = false;
 let historyIndexLoadPromise = null;
+let historyMapActive = false;
+let historyMapLoading = false;
+let historyMapLoadToken = 0;
+let historyMapCountyCounts = {};
+let historyMapCountyEvents = {};
+let historyMapCountyAlerts = {};
+let historyMapMaxCount = 0;
+let historyMapFrameCount = 0;
+let historyMapRangeLabel = "";
+let historyMapCache = {
+    frames:[],
+    titleCounts:new Map()
+};
+let historyMapReady = false;
+let historyMapCacheLoading = false;
+let historyMapCacheLoadPromise = null;
+let historyMapSidebarLoadToken = 0;
+let historyMapSidebarCache = new Map();
+const HISTORY_MAP_SIDEBAR_CACHE_LIMIT = 8;
 let plotHistoryCache = {
     frames:[],
     titleCounts:new Map()
@@ -1659,6 +1801,7 @@ const startupStatusState = {
     setup:false,
     history:false,
     plot:false,
+    historyMap:false,
     counties:false,
     states:false
 };
@@ -1716,6 +1859,8 @@ let isDraggingShortcutHelpPanel=false;
 let shortcutHelpPanelDragOffset={ x:0, y:0 };
 let isDraggingPlotPanel=false;
 let plotPanelDragOffset={ x:0, y:0 };
+let isDraggingHistoryMapPanel=false;
+let historyMapPanelDragOffset={ x:0, y:0 };
 let plotFrames=[];
 let plotTitleCounts=new Map();
 let plotPanelLoading=false;
@@ -1726,6 +1871,7 @@ let plotLastGeometry=null;
 let minimizedPanels={
     eventFilter:false,
     plot:false,
+    historyMap:false,
     history:false
 };
 
@@ -1818,6 +1964,9 @@ window.addEventListener('resize',()=>{
         clampPlotPanel();
         drawEventPlot();
     }
+    if(document.getElementById('historyMapPanel').classList.contains('open')){
+        clampHistoryMapPanel();
+    }
     clampScalePanels();
 });
 
@@ -1883,13 +2032,20 @@ const eventPlotCanvas=document.getElementById('eventPlotCanvas');
 const plotCursorTooltip=document.getElementById('plotCursorTooltip');
 const plotStatus=document.getElementById('plotStatus');
 const plotHint=document.getElementById('plotHint');
+const historyMapPanel=document.getElementById('historyMapPanel');
+const historyMapHeader=document.getElementById('historyMapHeader');
+const historyMapStart=document.getElementById('historyMapStart');
+const historyMapStop=document.getElementById('historyMapStop');
+const historyMapPanelStatus=document.getElementById('historyMapPanelStatus');
 const restoreEventFilterButton=document.getElementById('restoreEventFilterButton');
 const restorePlotButton=document.getElementById('restorePlotButton');
+const restoreHistoryMapButton=document.getElementById('restoreHistoryMapButton');
 const restoreHistoryButton=document.getElementById('restoreHistoryButton');
 
 function updatePanelRestoreDock(){
     restoreEventFilterButton.classList.toggle('visible',minimizedPanels.eventFilter);
     restorePlotButton.classList.toggle('visible',minimizedPanels.plot);
+    restoreHistoryMapButton.classList.toggle('visible',minimizedPanels.historyMap);
     restoreHistoryButton.classList.toggle('visible',minimizedPanels.history);
 }
 
@@ -1936,6 +2092,54 @@ document.addEventListener('mousemove',(e)=>{
 
 document.addEventListener('mouseup',()=>{
     isDraggingPlotPanel=false;
+});
+
+// ===== HISTORY MAP PANEL =====
+function clampHistoryMapPanel(){
+    const rect=historyMapPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    historyMapPanel.style.left=left+"px";
+    historyMapPanel.style.top=top+"px";
+    historyMapPanel.style.bottom="auto";
+    historyMapPanel.style.transform="none";
+}
+
+historyMapHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=historyMapPanel.getBoundingClientRect();
+    historyMapPanel.style.left=rect.left+"px";
+    historyMapPanel.style.top=rect.top+"px";
+    historyMapPanel.style.bottom="auto";
+    historyMapPanel.style.transform="none";
+
+    isDraggingHistoryMapPanel=true;
+    historyMapPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingHistoryMapPanel) return;
+
+    const rect=historyMapPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-historyMapPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-historyMapPanelDragOffset.y,0),maxTop);
+
+    historyMapPanel.style.left=left+"px";
+    historyMapPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingHistoryMapPanel=false;
 });
 
 function updatePlotCursorFromClientX(clientX){
@@ -2598,6 +2802,9 @@ async function refreshHistoryRetentionWindow(){
     plotHistoryCache={ frames:[], titleCounts:new Map() };
     plotHistoryReady=false;
     plotHistoryLoadPromise=null;
+    historyMapCache={ frames:[], titleCounts:new Map() };
+    historyMapReady=false;
+    historyMapCacheLoadPromise=null;
 
     const shouldRefreshOpenHistory=historyPanel.classList.contains('open');
     if(shouldRefreshOpenHistory){
@@ -2666,6 +2873,13 @@ function updateHistoryCachesWithSnapshot(snapshot){
         }
     ]);
     plotHistoryCache.titleCounts=getPlotTitleCountsFromFrames(plotHistoryCache.frames);
+    historyMapCache.frames=normalizeHistoryFrames([
+        ...(historyMapCache.frames || []),
+        getHistoryMapFrameFromSnapshot(snapshot)
+    ]);
+    historyMapCache.titleCounts=getHistoryMapTitleCountsFromFrames(historyMapCache.frames);
+    historyMapReady=true;
+    populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
     syncOpenHistoryPanelFromCache();
     syncOpenPlotPanelFromCache();
 }
@@ -2783,10 +2997,67 @@ function getPlotTitleCountsFromFrames(frames,mode=getPlotCountMode()){
     return titleCounts;
 }
 
-async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
+function cloneHistoryMapAlert(alert){
+    const title=alert.event || "Untitled";
+    return {
+        id:alert.id || [title,alert.sent,alert.expires,alert.headline].join("|"),
+        event:title
+    };
+}
+
+function getHistoryMapFrameFromSnapshot(frame){
+    const countyAlerts={};
+    const titleCounts=new Map();
+    Object.entries(frame?.alerts || {}).forEach(([fips,alerts])=>{
+        if(!Array.isArray(alerts)) return;
+        const seenIds=new Set();
+        alerts.forEach(alert=>{
+            if(!alert || typeof alert !== "object") return;
+            const title=alert.event || "Untitled";
+            const id=alert.id || [title,alert.sent,alert.expires,alert.headline].join("|");
+            if(seenIds.has(id)) return;
+            seenIds.add(id);
+            if(!countyAlerts[fips]) countyAlerts[fips]=[];
+            countyAlerts[fips].push(cloneHistoryMapAlert(alert));
+            titleCounts.set(title,(titleCounts.get(title) || 0) + 1);
+        });
+    });
+    return {
+        timestamp:frame.timestamp,
+        countyAlerts,
+        titleCounts:Object.fromEntries(titleCounts)
+    };
+}
+
+function getHistoryMapTitleCountsFromFrames(frames){
+    const titleCounts=new Map();
+    frames.forEach(frame=>{
+        Object.entries(frame.titleCounts || {}).forEach(([title,count])=>{
+            titleCounts.set(title,(titleCounts.get(title) || 0) + count);
+        });
+    });
+    return titleCounts;
+}
+
+function getCachedHistoryMapFrames(sinceTimestamp=null){
+    const cutoff=Date.now() - getHistoryRetentionMs();
+    const frames=(historyMapCache.frames || []).filter(frame=>{
+        if(!frame || !Number.isFinite(frame.timestamp)) return false;
+        if(frame.timestamp < cutoff) return false;
+        if(Number.isFinite(sinceTimestamp) && frame.timestamp <= sinceTimestamp) return false;
+        return true;
+    });
+    return {
+        frames,
+        titleCounts:getHistoryMapTitleCountsFromFrames(frames)
+    };
+}
+
+async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null,onHistoryMapProgress=null){
     let directError=null;
     try{
         const frames=[];
+        const historyMapFrames=[];
         const cutoff=Date.now() - getHistoryRetentionMs();
         const lowerBound=Number.isFinite(sinceTimestamp)
             ? Math.max(cutoff,sinceTimestamp + 1)
@@ -2799,12 +3070,14 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
             countRequest.onsuccess=()=>{
                 total=countRequest.result || 0;
                 if(typeof onProgress === "function") onProgress(total ? 1 : 100);
+                if(typeof onHistoryMapProgress === "function") onHistoryMapProgress(total ? 1 : 100);
             };
             const request=store.openCursor(IDBKeyRange.lowerBound(lowerBound));
             request.onsuccess=()=>{
                 const cursor=request.result;
                 if(!cursor){
                     if(typeof onProgress === "function") onProgress(100);
+                    if(typeof onHistoryMapProgress === "function") onHistoryMapProgress(100);
                     return;
                 }
                 processed++;
@@ -2815,6 +3088,9 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
                             if(typeof onProgress === "function" && total && processed % 20 === 0){
                                 onProgress((processed / total) * 100);
                             }
+                            if(typeof onHistoryMapProgress === "function" && total && processed % 20 === 0){
+                                onHistoryMapProgress((processed / total) * 100);
+                            }
                             cursor.continue();
                             return;
                         }
@@ -2824,6 +3100,7 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
                             alertTitleCounts:plotCounts.alertTitleCounts,
                             countyTitleCounts:plotCounts.countyTitleCounts
                         });
+                        historyMapFrames.push(getHistoryMapFrameFromSnapshot(frame));
                     }
                 }catch(error){
                     console.warn("Unable to process plot history frame",frame?.timestamp,error);
@@ -2831,14 +3108,22 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
                 if(typeof onProgress === "function" && total && processed % 20 === 0){
                     onProgress((processed / total) * 100);
                 }
+                if(typeof onHistoryMapProgress === "function" && total && processed % 20 === 0){
+                    onHistoryMapProgress((processed / total) * 100);
+                }
                 cursor.continue();
             };
         });
 
         const normalizedFrames=normalizeHistoryFrames(frames);
+        const normalizedHistoryMapFrames=normalizeHistoryFrames(historyMapFrames);
         return {
             frames:normalizedFrames,
-            titleCounts:getPlotTitleCountsFromFrames(normalizedFrames)
+            titleCounts:getPlotTitleCountsFromFrames(normalizedFrames),
+            historyMap:{
+                frames:normalizedHistoryMapFrames,
+                titleCounts:getHistoryMapTitleCountsFromFrames(normalizedHistoryMapFrames)
+            }
         };
     }catch(error){
         directError=error;
@@ -2852,7 +3137,11 @@ async function loadPlotHistoryFramesFromDb(sinceTimestamp=null,onProgress=null){
         if(directError) console.warn("Original plot history error",directError);
         return {
             frames:[],
-            titleCounts:new Map()
+            titleCounts:new Map(),
+            historyMap:{
+                frames:[],
+                titleCounts:new Map()
+            }
         };
     }
 }
@@ -2878,7 +3167,8 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
             frames.push({
                 timestamp:frame.timestamp,
                 alertTitleCounts:plotCounts.alertTitleCounts,
-                countyTitleCounts:plotCounts.countyTitleCounts
+                countyTitleCounts:plotCounts.countyTitleCounts,
+                historyMapFrame:getHistoryMapFrameFromSnapshot(frame)
             });
         }catch(error){
             console.warn("Unable to load plot frame from metadata",frameMetadata?.timestamp,error);
@@ -2888,7 +3178,11 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
     const normalizedFrames=normalizeHistoryFrames(frames);
     return {
         frames:normalizedFrames,
-        titleCounts:getPlotTitleCountsFromFrames(normalizedFrames)
+        titleCounts:getPlotTitleCountsFromFrames(normalizedFrames),
+        historyMap:{
+            frames:normalizeHistoryFrames(frames.map(frame=>frame.historyMapFrame).filter(Boolean)),
+            titleCounts:getHistoryMapTitleCountsFromFrames(frames.map(frame=>frame.historyMapFrame).filter(Boolean))
+        }
     };
 }
 
@@ -2920,24 +3214,40 @@ function startPlotHistoryBackgroundLoad(){
     if(plotHistoryLoading) return plotHistoryLoadPromise;
     plotHistoryLoading=true;
     setStartupStatus("plot","Plot cache: reading event counts");
+    setStartupStatus("historyMap","History map: reading alert counts");
     setStartupTaskProgress("plot",0);
+    setStartupTaskProgress("historyMap",0);
     plotHistoryLoadPromise=(async()=>{
         if(!historyIndexReady){
             await startHistoryIndexBackgroundLoad();
         }
-        const plotHistory=await loadPlotHistoryFramesFromDb(null,percent=>setStartupTaskProgress("plot",percent));
+        const plotHistory=await loadPlotHistoryFramesFromDb(
+            null,
+            percent=>setStartupTaskProgress("plot",percent),
+            percent=>setStartupTaskProgress("historyMap",percent)
+        );
         plotHistoryCache={
             frames:Array.isArray(plotHistory.frames) ? plotHistory.frames : [],
             titleCounts:plotHistory.titleCounts instanceof Map ? plotHistory.titleCounts : new Map()
         };
+        historyMapCache={
+            frames:Array.isArray(plotHistory.historyMap?.frames) ? plotHistory.historyMap.frames : [],
+            titleCounts:plotHistory.historyMap?.titleCounts instanceof Map ? plotHistory.historyMap.titleCounts : new Map()
+        };
         plotHistoryReady=true;
+        historyMapReady=true;
+        populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
         setStartupTaskProgress("plot",100);
+        setStartupTaskProgress("historyMap",100);
         setStartupStatus("plot","Plot cache: " + plotHistoryCache.frames.length + (plotHistoryCache.frames.length === 1 ? " frame" : " frames"),"done");
+        setStartupStatus("historyMap","History map: " + historyMapCache.frames.length + (historyMapCache.frames.length === 1 ? " frame" : " frames"),"done");
         syncOpenPlotPanelFromCache();
         return plotHistoryCache;
     })().catch(error=>{
         setStartupTaskProgress("plot",100);
+        setStartupTaskProgress("historyMap",100);
         setStartupStatus("plot","Plot cache: unavailable","error");
+        setStartupStatus("historyMap","History map: unavailable","error");
         console.warn("Unable to build background plot cache",error);
         return plotHistoryCache;
     }).finally(()=>{
@@ -2951,6 +3261,7 @@ function startHistoryBackgroundCaches(){
     startupBackgroundCachesStarted=true;
     setStartupStatus("history","History: waiting for map");
     setStartupStatus("plot","Plot cache: waiting for history");
+    setStartupStatus("historyMap","History map: waiting for plot cache");
     runWhenIdle(()=>{
         startHistoryIndexBackgroundLoad().finally(()=>{
             runWhenIdle(()=>startPlotHistoryBackgroundLoad(),1800);
@@ -2990,6 +3301,365 @@ function getHistoryFramePlotCounts(frame){
 
 function getHistoryFrameEventTitleCounts(frame){
     return getHistoryFramePlotCounts(frame).alertTitleCounts;
+}
+
+function getSelectedHistoryMapEventTitles(){
+    const select=document.getElementById('historyMapEventTypes');
+    if(!select) return [];
+    return [...select.selectedOptions].map(option=>option.value);
+}
+
+function setHistoryMapStatus(message){
+    const status=document.getElementById('historyMapStatus');
+    if(status) status.textContent=message;
+    if(historyMapPanelStatus) historyMapPanelStatus.textContent=message;
+}
+
+function populateHistoryMapEventTypeOptions(titleCounts=null){
+    const select=document.getElementById('historyMapEventTypes');
+    if(!select) return;
+    if(!(titleCounts instanceof Map)){
+        titleCounts=historyMapCache.titleCounts instanceof Map
+            ? historyMapCache.titleCounts
+            : getHistoryMapTitleCountsFromFrames(historyMapCache.frames || []);
+    }
+
+    const currentSelection=new Set(getSelectedHistoryMapEventTitles());
+    const hadOptions=select.options.length;
+    const allExistingSelected=hadOptions > 0 && currentSelection.size === hadOptions;
+    const titles=[...titleCounts.keys()].sort((a,b)=>a.localeCompare(b));
+
+    select.innerHTML=titles.map(title=>{
+        const selected=currentSelection.size ? currentSelection.has(title) || allExistingSelected : false;
+        const count=titleCounts.get(title) || 0;
+        return `<option value="${escapeHtml(title)}" ${selected ? "selected" : ""}>${escapeHtml(title)} (${count})</option>`;
+    }).join("");
+}
+
+function getHistoryMapColor(count){
+    if(count <= 0) return "#f7f7f7";
+    const ratio=historyMapMaxCount ? count / historyMapMaxCount : 0;
+    if(ratio >= 0.85) return "#7f0000";
+    if(ratio >= 0.65) return "#b30000";
+    if(ratio >= 0.45) return "#e34a33";
+    if(ratio >= 0.25) return "#fc8d59";
+    if(ratio >= 0.1) return "#fdbb84";
+    return "#fee8c8";
+}
+
+function getHistoryMapFeatureStyle(f){
+    const fips=getFips(f);
+    const count=historyMapCountyCounts[fips] || 0;
+    if(!count){
+        return {fillOpacity:0.05,color:"#000",weight:0.4};
+    }
+    return {
+        fillColor:getHistoryMapColor(count),
+        fillOpacity:Math.max(0.35, countyOpacityValue),
+        color:"#000",
+        weight:0.4
+    };
+}
+
+function getHistoryMapCacheFramesInRange(){
+    const range=getHistoryMapRange();
+    return getCachedHistoryMapFrames().frames.filter(frame=>frame.timestamp >= range.start && frame.timestamp <= range.stop);
+}
+
+function getHistoryMapRange(){
+    const start=parseDateTimeLocal(historyMapStart.value);
+    const stop=parseDateTimeLocal(historyMapStop.value);
+    const lo=Number.isFinite(start) ? start : -Infinity;
+    const hi=Number.isFinite(stop) ? stop : Infinity;
+    return lo <= hi ? { start:lo, stop:hi } : { start:hi, stop:lo };
+}
+
+function getHistoryMapSelectionState(){
+    const selectedTitles=new Set(getSelectedHistoryMapEventTitles());
+    const optionCount=document.getElementById('historyMapEventTypes')?.options.length || 0;
+    return { selectedTitles, optionCount };
+}
+
+function historyMapAlertMatchesSelection(alert,selection=getHistoryMapSelectionState()){
+    const title=alert?.event || "Untitled";
+    if(selection.optionCount && !selection.selectedTitles.size) return false;
+    if(selection.selectedTitles.size && !selection.selectedTitles.has(title)) return false;
+    return true;
+}
+
+function getHistoryMapAlertId(alert){
+    const title=alert?.event || "Untitled";
+    return alert?.id || [title,alert?.sent,alert?.expires,alert?.headline].join("|");
+}
+
+function getHistoryMapSidebarCacheKey(fips,selection=getHistoryMapSelectionState()){
+    const range=getHistoryMapRange();
+    const titles=[...selection.selectedTitles].sort().join("|");
+    return [
+        fips,
+        Number.isFinite(range.start) ? range.start : "start",
+        Number.isFinite(range.stop) ? range.stop : "stop",
+        selection.optionCount,
+        titles
+    ].join("::");
+}
+
+function getHistoryMapCountyFrameCandidates(fips,selection=getHistoryMapSelectionState()){
+    const frames=getHistoryMapCacheFramesInRange();
+    const candidates=[];
+    const seenIds=new Set();
+    frames.forEach(frame=>{
+        const alerts=frame.countyAlerts?.[fips] || [];
+        if(!Array.isArray(alerts) || !alerts.length) return;
+
+        const ids=new Set();
+        alerts.forEach(alert=>{
+            if(!historyMapAlertMatchesSelection(alert,selection)) return;
+            const id=getHistoryMapAlertId(alert);
+            if(seenIds.has(id)) return;
+            seenIds.add(id);
+            ids.add(id);
+        });
+
+        if(ids.size){
+            candidates.push({ timestamp:frame.timestamp, ids });
+        }
+    });
+    return candidates;
+}
+
+function cacheHistoryMapSidebarHtml(key,html){
+    historyMapSidebarCache.set(key,html);
+    if(historyMapSidebarCache.size > HISTORY_MAP_SIDEBAR_CACHE_LIMIT){
+        historyMapSidebarCache.delete(historyMapSidebarCache.keys().next().value);
+    }
+}
+
+function updateHistoryMapBadges(){
+    if(!historyMapActive) return;
+    historyModeBadge.textContent="History Map";
+    historyTimeBadge.textContent=historyMapRangeLabel || "Alert counts";
+}
+
+function startHistoryMapBackgroundLoad(){
+    if(historyMapCacheLoading) return historyMapCacheLoadPromise;
+    historyMapCacheLoading=true;
+    historyMapCacheLoadPromise=startPlotHistoryBackgroundLoad().then(()=>{
+        historyMapReady=historyMapReady || historyMapCache.frames.length > 0;
+        populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
+        return historyMapCache;
+    }).finally(()=>{
+        historyMapCacheLoading=false;
+    });
+    return historyMapCacheLoadPromise;
+}
+
+function setHistoryMapRangeDefaultsFromCache(){
+    const frames=getCachedHistoryMapFrames().frames;
+    if(!frames.length) return;
+    if(!historyMapStart.value) historyMapStart.value=formatDateTimeLocal(frames[0].timestamp);
+    if(!historyMapStop.value) historyMapStop.value=formatDateTimeLocal(frames[frames.length - 1].timestamp);
+}
+
+async function applyHistoryMapFromControls(){
+    if(historyMapLoading){
+        if(!historyMapPanel.classList.contains('open')){
+            historyMapPanel.classList.add('open');
+            historyMapPanel.classList.remove('minimized');
+            minimizedPanels.historyMap=false;
+            updatePanelRestoreDock();
+            clampHistoryMapPanel();
+        }
+        setHistoryMapStatus("Building history map...");
+        return;
+    }
+    const loadToken=++historyMapLoadToken;
+    historyMapLoading=true;
+    setHistoryMapStatus("Building history map...");
+
+    try{
+        if(!historyMapPanel.classList.contains('open')){
+            historyMapPanel.classList.add('open');
+            historyMapPanel.classList.remove('minimized');
+            minimizedPanels.historyMap=false;
+            updatePanelRestoreDock();
+            clampHistoryMapPanel();
+        }
+        document.body.classList.add('history-active');
+        historyMapActive=true;
+        historyModeActive=true;
+        historyFrameTimestamp=null;
+        disableLiveOnlyOverlays();
+        historyModeBadge.textContent="History Map";
+        historyTimeBadge.textContent="Preparing alert counts";
+        redrawMap();
+
+        if(!historyMapReady && !historyMapCache.frames.length){
+            setHistoryMapStatus("Indexing saved history in the background...");
+            startHistoryMapBackgroundLoad().then(()=>{
+                if(historyMapActive) applyHistoryMapFromControls();
+            });
+            return;
+        }
+
+        setHistoryMapRangeDefaultsFromCache();
+        populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
+        const selection=getHistoryMapSelectionState();
+        historyMapSidebarCache.clear();
+        const frames=getHistoryMapCacheFramesInRange();
+        if(!frames.length){
+            setHistoryMapStatus("No frames in the selected time frame.");
+            historyMapLoading=false;
+            return;
+        }
+
+        const countyAlertIds={};
+        const countyEvents={};
+        const countyAlerts={};
+
+        for(const frame of frames){
+            if(loadToken !== historyMapLoadToken) return;
+            Object.entries(frame.countyAlerts || {}).forEach(([fips,alerts])=>{
+                if(!Array.isArray(alerts)) return;
+                alerts.forEach(alert=>{
+                    const title=alert?.event || "Untitled";
+                    if(!historyMapAlertMatchesSelection(alert,selection)) return;
+                    const id=alert.id || [title,alert.sent,alert.expires,alert.headline].join("|");
+                    if(!countyAlertIds[fips]) countyAlertIds[fips]=new Set();
+                    if(countyAlertIds[fips].has(id)) return;
+                    countyAlertIds[fips].add(id);
+                    if(!countyEvents[fips]) countyEvents[fips]={};
+                    countyEvents[fips][title]=(countyEvents[fips][title] || 0) + 1;
+                    if(!countyAlerts[fips]) countyAlerts[fips]=[];
+                    countyAlerts[fips].push(alert);
+                });
+            });
+        }
+
+        historyMapCountyCounts={};
+        Object.entries(countyAlertIds).forEach(([fips,ids])=>{
+            historyMapCountyCounts[fips]=ids.size;
+        });
+        historyMapCountyEvents=countyEvents;
+        historyMapCountyAlerts=countyAlerts;
+        historyMapMaxCount=Math.max(0,...Object.values(historyMapCountyCounts));
+        historyMapFrameCount=frames.length;
+        historyMapActive=true;
+        historyModeActive=true;
+        historyFrameTimestamp=null;
+        historyMapRangeLabel=new Date(frames[0].timestamp).toLocaleString() + " - " + new Date(frames[frames.length - 1].timestamp).toLocaleString();
+        document.body.classList.add('history-active');
+        disableLiveOnlyOverlays();
+        updateHistoryMapBadges();
+        redrawMap();
+        refreshEventFilterListIfOpen();
+        if(currentSidebarSelection){
+            showSidebar(
+                currentSidebarSelection.fips,
+                currentSidebarSelection.name,
+                currentSidebarSelection.feature,
+                false
+            );
+        }
+
+        const typeLabel=selection.selectedTitles.size
+            ? selection.selectedTitles.size + " selected type" + (selection.selectedTitles.size === 1 ? "" : "s")
+            : selection.optionCount
+                ? "no selected types"
+                : "all types";
+        setHistoryMapStatus(historyMapMaxCount
+            ? historyMapFrameCount + " frames, " + Object.keys(historyMapCountyCounts).length + " counties, max " + historyMapMaxCount + " alerts, " + typeLabel + "."
+            : historyMapFrameCount + " frames, no matching alerts, " + typeLabel + "."
+        );
+    }catch(error){
+        console.warn("Unable to build history map",error);
+        setHistoryMapStatus("Unable to build history map.");
+    }finally{
+        if(loadToken === historyMapLoadToken) historyMapLoading=false;
+    }
+}
+
+function selectAllHistoryMapEventTypes(){
+    document.querySelectorAll('#historyMapEventTypes option').forEach(option=>option.selected=true);
+    applyHistoryMapFromControls();
+}
+
+function clearHistoryMapEventTypes(){
+    document.querySelectorAll('#historyMapEventTypes option').forEach(option=>option.selected=false);
+    applyHistoryMapFromControls();
+}
+
+function openHistoryMapPanel(){
+    historyMapPanel.classList.remove('minimized');
+    historyMapPanel.classList.add('open');
+    minimizedPanels.historyMap=false;
+    updatePanelRestoreDock();
+    clampHistoryMapPanel();
+    setHistoryMapRangeDefaultsFromCache();
+    populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
+    clearHistoryMapEventTypes();
+}
+
+function closeHistoryMapPanel(){
+    historyMapLoadToken++;
+    historyMapLoading=false;
+    historyMapPanel.classList.remove('open','minimized');
+    minimizedPanels.historyMap=false;
+    updatePanelRestoreDock();
+    exitHistoryMapMode();
+}
+
+function minimizeHistoryMapPanel(){
+    if(!historyMapPanel.classList.contains('open')) return;
+    historyMapPanel.classList.add('minimized');
+    minimizedPanels.historyMap=true;
+    updatePanelRestoreDock();
+}
+
+function restoreHistoryMapPanel(){
+    historyMapPanel.classList.add('open');
+    historyMapPanel.classList.remove('minimized');
+    minimizedPanels.historyMap=false;
+    updatePanelRestoreDock();
+    clampHistoryMapPanel();
+}
+
+function exitHistoryMapMode(){
+    if(!historyMapActive) return;
+    historyMapLoadToken++;
+    historyMapActive=false;
+    historyMapLoading=false;
+    historyMapCountyCounts={};
+    historyMapCountyEvents={};
+    historyMapCountyAlerts={};
+    historyMapSidebarCache.clear();
+    historyMapMaxCount=0;
+    historyMapFrameCount=0;
+    historyMapRangeLabel="";
+    setHistoryMapStatus("History map off.");
+    document.body.classList.remove('history-active');
+    historyModeActive=false;
+    historyFrameTimestamp=null;
+    rawData=liveRawData;
+    redrawMap();
+    if(currentSidebarSelection){
+        showSidebar(
+            currentSidebarSelection.fips,
+            currentSidebarSelection.name,
+            currentSidebarSelection.feature,
+            false
+        );
+    }
+}
+
+async function toggleHistoryMapMode(){
+    if(historyMapPanel.classList.contains('open') && historyMapPanel.classList.contains('minimized')){
+        restoreHistoryMapPanel();
+    } else if(historyMapPanel.classList.contains('open')){
+        closeHistoryMapPanel();
+    } else {
+        openHistoryMapPanel();
+    }
 }
 
 function getSelectedPlotEventTitles(){
@@ -3417,14 +4087,11 @@ function populatePlotEventTitleOptions(titleCounts){
     const currentSelection=new Set(getSelectedPlotEventTitles());
     const hadOptions=plotEventTitles.options.length;
     const allExistingSelected=hadOptions > 0 && currentSelection.size === hadOptions;
-    const filterSelection=filters.eventTitleMode === "selected" ? new Set(filters.eventTitles) : null;
 
     plotEventTitles.innerHTML=titles.map(title=>{
         const selected=currentSelection.size
             ? currentSelection.has(title) || allExistingSelected
-            : filterSelection
-                ? filterSelection.has(title)
-                : true;
+            : false;
         return `<option value="${escapeHtml(title)}" ${selected ? "selected" : ""}>${escapeHtml(title)} (${titleCounts.get(title)})</option>`;
     }).join("");
 }
@@ -3452,6 +4119,7 @@ function applyPlotHistory(plotHistory,shouldExtendStop){
         if(shouldExtendStop) setPlotStopToLatest();
     }
     populatePlotEventTitleOptions(plotTitleCounts);
+    populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
     setPlotStatus(plotFrames.length + (plotFrames.length === 1 ? " frame" : " frames"));
 }
 
@@ -3490,6 +4158,12 @@ async function reloadPlotHistory(){
         if(addedFrameCount){
             plotHistoryCache.frames=normalizeHistoryFrames([...plotHistoryCache.frames,...plotHistory.frames]);
             plotHistoryCache.titleCounts=getPlotTitleCountsFromFrames(plotHistoryCache.frames);
+            if(plotHistory.historyMap?.frames?.length){
+                historyMapCache.frames=normalizeHistoryFrames([...historyMapCache.frames,...plotHistory.historyMap.frames]);
+                historyMapCache.titleCounts=getHistoryMapTitleCountsFromFrames(historyMapCache.frames);
+                historyMapReady=true;
+                populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
+            }
             plotHistoryReady=true;
         }
         drawEventPlot();
@@ -3517,12 +4191,13 @@ async function openPlotPanel(){
     minimizedPanels.plot=false;
     updatePanelRestoreDock();
     clampPlotPanel();
+    [...plotEventTitles.options].forEach(option=>{ option.selected=false; });
 
     const cachedPlotHistory=getCachedPlotHistoryFrames();
     if(cachedPlotHistory.frames.length){
         plotPanelLoading=false;
         applyPlotHistory(cachedPlotHistory,!plotStop.value);
-        drawEventPlot();
+        selectNoPlotEventTitles();
         startPlotHistoryBackgroundLoad();
         return;
     }
@@ -3631,11 +4306,26 @@ async function clearHistorySnapshots(){
         plotHistoryCache={ frames:[], titleCounts:new Map() };
         plotHistoryReady=true;
         plotHistoryLoading=false;
+        historyMapCache={ frames:[], titleCounts:new Map() };
+        historyMapReady=true;
+        historyMapCacheLoading=false;
         historyFrameLoadToken++;
         historyFrameTimestamp=null;
+        historyMapLoadToken++;
+        historyMapActive=false;
+        historyMapLoading=false;
+        historyMapCountyCounts={};
+        historyMapCountyEvents={};
+        historyMapCountyAlerts={};
+        historyMapSidebarCache.clear();
+        historyMapMaxCount=0;
+        historyMapFrameCount=0;
+        historyMapRangeLabel="";
         historyStart.value="";
         historyStop.value="";
         updateHistoryPanelState();
+        populateHistoryMapEventTypeOptions(new Map());
+        setHistoryMapStatus("History cleared.");
         if(historyModeActive){
             rawData=liveRawData;
             reloadRadar();
@@ -3759,12 +4449,25 @@ async function showHistoryFrame(index,options={}){
         const loadToken=++historyFrameLoadToken;
 
         historySlider.value=index;
+        historyModeBadge.textContent="History";
         historyTimeBadge.textContent=new Date(metadata.timestamp).toLocaleString();
         historyTime.textContent=(metadata.alertCount ?? 0) + " alerts in the U.S. archive";
 
         const frame=await loadHistoryFrame(metadata.timestamp);
         if(loadToken !== historyFrameLoadToken || !frame || !frame.alerts) return;
 
+        if(historyMapActive){
+            historyMapActive=false;
+            historyMapLoading=false;
+            historyMapCountyCounts={};
+            historyMapCountyEvents={};
+            historyMapCountyAlerts={};
+            historyMapSidebarCache.clear();
+            historyMapMaxCount=0;
+            historyMapFrameCount=0;
+            historyMapRangeLabel="";
+            setHistoryMapStatus("History map off.");
+        }
         historyModeActive=true;
         historyFrameTimestamp=frame.timestamp;
         rawData=cloneJson(frame.alerts || {});
@@ -4013,6 +4716,7 @@ async function openHistoryPanel(){
     minimizedPanels.history=false;
     updatePanelRestoreDock();
     clampHistoryPanel();
+    populateHistoryMapEventTypeOptions();
 
     const cachedFrames=getCachedHistorySnapshots();
     if(cachedFrames.length){
@@ -4051,10 +4755,12 @@ function closeHistoryPanel(){
     historyPanel.classList.remove('open','minimized');
     minimizedPanels.history=false;
     updatePanelRestoreDock();
-    document.body.classList.remove('history-active');
     historyModeActive=false;
     historyFrameTimestamp=null;
-    rawData=liveRawData;
+    if(!historyMapActive){
+        document.body.classList.remove('history-active');
+        rawData=liveRawData;
+    }
     reloadRadar();
     redrawMap();
     if(currentSidebarSelection){
@@ -4353,6 +5059,10 @@ async function refresh(){
 function updateTornadoWarningBanner(){
     const banner=document.getElementById('tornadoWarningBanner');
     if(!banner) return;
+    if(historyMapActive){
+        banner.classList.remove('active');
+        return;
+    }
 
     const hasTornadoWarning=Object.values(rawData).some(alerts =>
         alerts.some(alert => getPriorityCategory(alert.event) === "tornado-warning")
@@ -4609,6 +5319,10 @@ function toggleStateLabels(){
 }
 
 function getFeatureStyle(f){
+    if(historyMapActive){
+        return getHistoryMapFeatureStyle(f);
+    }
+
     if(!countyColorizationEnabled){
         return {fill:false,color:"#000",weight:0.4};
     }
@@ -4649,9 +5363,16 @@ function redrawMap(){
             const filteredAlerts=getFiltered(fips);
             const name=f.properties.NAME;
 
-            let tooltip=name+" ("+alerts.length+")";
+            let tooltip=historyMapActive
+                ? name+" ("+(historyMapCountyCounts[fips] || 0)+" history alerts)"
+                : name+" ("+alerts.length+")";
 
-            if(showEventsToggle.checked && alerts.length){
+            if(historyMapActive && showEventsToggle.checked && historyMapCountyEvents[fips]){
+                const rows=Object.entries(historyMapCountyEvents[fips])
+                    .sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))
+                    .map(([event,count])=>`${escapeHtml(event)}: ${count}`);
+                tooltip+="<br>"+rows.join("<br>");
+            } else if(showEventsToggle.checked && alerts.length){
                 const events=[...new Set(alerts.map(a=>a.event))];
                 const colored=events.map(e =>
                     `<span style="color:${getColor(getPriorityCategory(e))};font-weight:bold;">●</span> ${e}`
@@ -4662,8 +5383,12 @@ function redrawMap(){
             layer.bindTooltip(tooltip);
             layer.on("click",()=>showSidebar(fips,name,f));
             layer.on("mouseover",()=>{
-                if(!countyColorizationEnabled) return;
-                if(!filteredAlerts.length) return;
+                if(historyMapActive){
+                    if(!(historyMapCountyCounts[fips] || 0)) return;
+                } else {
+                    if(!countyColorizationEnabled) return;
+                    if(!filteredAlerts.length) return;
+                }
                 layer.setStyle({ fillColor: "#999", fillOpacity: countyOpacityValue });
             });
             layer.on("mouseout",()=>{
@@ -4671,6 +5396,7 @@ function redrawMap(){
             });
 
             if(blinkToggle.checked &&
+               !historyMapActive &&
                countyColorizationEnabled &&
                filteredAlerts.some(a=>((getActiveTimestamp()-new Date(a.sent).getTime())/1000)<3600)){
                 let visible=true;
@@ -4728,6 +5454,15 @@ function showSidebar(fips,name,f,shouldOpen=true){
     const sameCode = stateFips + countyFips;
     const stateAbbr = stateAbbreviations[stateFips] || stateFips;
     let html = `<h3>${name}, ${stateAbbr} (${sameCode})</h3>`;
+    if(historyMapActive){
+        const count=historyMapCountyCounts[fips] || 0;
+        html += `<div class="alert"><b>History map:</b> ${historyMapRangeLabel || "selected period"}<br><b>Alerts:</b> ${count}</div>`;
+        html += `<div class="alert" id="historyMapCountyAlertList">Loading associated alerts...</div>`;
+        content.innerHTML=html;
+        loadHistoryMapCountyAlertsIntoSidebar(fips);
+        return;
+    }
+
     if(historyModeActive && historyFrameTimestamp){
         html += `<div class="alert"><b>History:</b> ${new Date(historyFrameTimestamp).toLocaleString()}</div>`;
     }
@@ -4759,6 +5494,86 @@ function showSidebar(fips,name,f,shouldOpen=true){
     });
 
     content.innerHTML=html;
+}
+
+async function loadHistoryMapCountyAlertsIntoSidebar(fips){
+    const token=++historyMapSidebarLoadToken;
+    const list=document.getElementById('historyMapCountyAlertList');
+    if(!list) return;
+
+    try{
+        const selection=getHistoryMapSelectionState();
+        const cacheKey=getHistoryMapSidebarCacheKey(fips,selection);
+        if(historyMapSidebarCache.has(cacheKey)){
+            const cachedHtml=historyMapSidebarCache.get(cacheKey);
+            historyMapSidebarCache.delete(cacheKey);
+            historyMapSidebarCache.set(cacheKey,cachedHtml);
+            list.outerHTML=cachedHtml;
+            return;
+        }
+
+        const candidates=getHistoryMapCountyFrameCandidates(fips,selection);
+        if(!candidates.length){
+            list.innerHTML="No matching history alerts";
+            return;
+        }
+
+        list.innerHTML="Loading associated alerts from " + candidates.length + (candidates.length === 1 ? " history frame..." : " history frames...");
+        const seenIds=new Set();
+        const mappedAlerts=[];
+
+        for(const candidate of candidates){
+            const frame=await loadHistoryFrame(candidate.timestamp);
+            if(token !== historyMapSidebarLoadToken || !historyMapActive) return;
+            const alerts=frame?.alerts?.[fips] || [];
+            if(!Array.isArray(alerts)) continue;
+            alerts.forEach(alert=>{
+                const id=getHistoryMapAlertId(alert);
+                if(!candidate.ids.has(id)) return;
+                if(seenIds.has(id)) return;
+                seenIds.add(id);
+                mappedAlerts.push(alert);
+            });
+        }
+
+        if(token !== historyMapSidebarLoadToken || !historyMapActive) return;
+        if(!mappedAlerts.length){
+            list.innerHTML="No matching history alerts";
+            return;
+        }
+
+        mappedAlerts.sort((a,b)=>{
+            const sentDelta=(new Date(a.sent || 0)) - (new Date(b.sent || 0));
+            if(sentDelta) return sentDelta;
+            return (a.event || "").localeCompare(b.event || "");
+        });
+
+        const html=mappedAlerts.map(a=>`
+            <div class="alert">
+            <b>${escapeHtml(a.event || "Untitled")}</b><br>
+            <i>${escapeHtml(a.severity || "N/A")}</i><br><br>
+
+            <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
+            <b>Expires:</b> ${a.expires ? new Date(a.expires).toLocaleString() : "N/A"}<br><br>
+
+            <b>Headline:</b><br>
+            ${escapeHtml(a.headline || "No headline provided.")}<br><br>
+
+            <b>Description:</b><br>
+            ${escapeHtml(a.description || "No description provided.")}<br><br>
+
+            <b>ID:</b> ${hashAlertId(a.id)}
+            </div>
+        `).join("");
+        cacheHistoryMapSidebarHtml(cacheKey,html);
+        list.outerHTML=html;
+    }catch(error){
+        console.warn("Unable to load history map county alerts",error);
+        if(token === historyMapSidebarLoadToken){
+            const currentList=document.getElementById('historyMapCountyAlertList');
+            if(currentList) currentList.innerHTML="Unable to load associated alerts.";
+        }
+    }
 }
 
 // ===== FILTERS =====
@@ -5555,6 +6370,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('historyMapPanel').classList.contains('open')) {
+        closeHistoryMapPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('setupPanel').classList.contains('open')) {
         closeSetupPanel();
         return;
@@ -5620,6 +6440,10 @@ document.addEventListener('keydown', (e) => {
         } else {
             openHistoryPanel();
         }
+        return;
+    } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        toggleHistoryMapMode();
         return;
     } else if (e.key === 'g' || e.key === 'G') {
         e.preventDefault();
