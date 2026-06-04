@@ -3556,15 +3556,27 @@ function clearHistoryMapQuickRange(){
     if(historyMapQuickRange) historyMapQuickRange.value="";
 }
 
-function setHistoryMapQuickRange(hoursValue){
+async function setHistoryMapQuickRange(hoursValue,options={}){
+    const { apply=true }=options;
     const hours=Number(hoursValue);
-    if(!Number.isFinite(hours) || hours <= 0) return;
+    if(!Number.isFinite(hours) || hours <= 0) return false;
 
-    const frames=getCachedHistoryMapFrames().frames;
-    const stop=frames.length ? frames[frames.length - 1].timestamp : Date.now();
+    let frames=getCachedHistoryMapFrames().frames;
+    if(!frames.length || historyMapCacheLoading){
+        setHistoryMapStatus("Reading saved history...");
+        await startHistoryMapBackgroundLoad();
+        frames=getCachedHistoryMapFrames().frames;
+    }
+    if(!frames.length){
+        setHistoryMapStatus("No saved history frames.");
+        return false;
+    }
+
+    const stop=frames[frames.length - 1].timestamp;
     historyMapStop.value=formatDateTimeLocal(stop);
     historyMapStart.value=formatDateTimeLocal(stop - hours * 60 * 60 * 1000);
-    applyHistoryMapFromControls();
+    if(apply) applyHistoryMapFromControls();
+    return true;
 }
 
 async function applyHistoryMapFromControls(){
@@ -3697,7 +3709,7 @@ function clearHistoryMapEventTypes(){
     applyHistoryMapFromControls();
 }
 
-function openHistoryMapPanel(){
+async function openHistoryMapPanel(){
     historyMapPanel.classList.remove('minimized');
     historyMapPanel.classList.add('open');
     minimizedPanels.historyMap=false;
@@ -3705,8 +3717,14 @@ function openHistoryMapPanel(){
     clampHistoryMapPanel();
     suppressLiveAlertDisplayForHistoryMap();
     redrawMap();
-    setHistoryMapRangeDefaultsFromCache();
     populateHistoryMapEventTypeOptions(historyMapCache.titleCounts);
+    const quickRangeValue=historyMapQuickRange?.value || "";
+    if(quickRangeValue){
+        const updated=await setHistoryMapQuickRange(quickRangeValue,{ apply:false });
+        if(updated) clearHistoryMapEventTypes();
+        return;
+    }
+    setHistoryMapRangeDefaultsFromCache();
     clearHistoryMapEventTypes();
 }
 
