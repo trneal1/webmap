@@ -283,6 +283,7 @@ body.sidebar-closed #openSidebar {
 
 #eventFilterHeader .panel-header-buttons,
 #historyHeader .panel-header-buttons,
+#priorityHeader .panel-header-buttons,
 #plotHeader .panel-header-buttons {
     display:flex;
     align-items:center;
@@ -290,6 +291,7 @@ body.sidebar-closed #openSidebar {
 }
 
 #eventFilterOverlay.minimized,
+#priorityPanel.minimized,
 #historyPanel.minimized,
 #historyMapPanel.minimized,
 #plotPanel.minimized {
@@ -748,6 +750,129 @@ body.history-active #historyMapBadges {
 
 #setupActions button:hover,
 #closeSetup:hover {
+    background:#eee;
+}
+
+#priorityPanel {
+    position:fixed;
+    top:72px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:2200;
+    display:none;
+    width:min(460px, calc(100vw - 28px));
+    max-height:calc(100vh - 96px);
+    background:#fff;
+    border:1px solid #333;
+    border-radius:6px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    font-size:12px;
+}
+
+#priorityPanel.open {
+    display:block;
+}
+
+#priorityHeader {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px;
+    border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
+}
+
+#priorityHeader h3 {
+    margin:0;
+    font-size:15px;
+}
+
+#minimizePriority,
+#closePriority {
+    width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:16px;
+    line-height:1;
+}
+
+#priorityBody {
+    display:grid;
+    gap:10px;
+    padding:10px;
+    max-height:calc(100vh - 150px);
+    overflow:auto;
+}
+
+#priorityList {
+    display:grid;
+    gap:6px;
+}
+
+.priority-row {
+    display:grid;
+    grid-template-columns:42px minmax(0,1fr) 52px 64px;
+    gap:8px;
+    align-items:center;
+    padding:7px 8px;
+    border:1px solid #ddd;
+    border-radius:4px;
+}
+
+.priority-rank {
+    font-family:monospace;
+    color:#555;
+}
+
+.priority-name {
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    text-transform:capitalize;
+}
+
+.priority-row input[type="color"] {
+    width:48px;
+    height:28px;
+    padding:1px;
+    border:1px solid #333;
+    background:#fff;
+    cursor:pointer;
+}
+
+.priority-move-buttons,
+#priorityActions {
+    display:flex;
+    gap:6px;
+    align-items:center;
+    justify-content:flex-end;
+}
+
+.priority-move-buttons button,
+#priorityActions button {
+    min-width:28px;
+    height:28px;
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+.priority-move-buttons button:disabled {
+    color:#aaa;
+    border-color:#bbb;
+    cursor:default;
+}
+
+.priority-move-buttons button:not(:disabled):hover,
+#priorityActions button:hover,
+#minimizePriority:hover,
+#closePriority:hover {
     background:#eee;
 }
 
@@ -1481,6 +1606,23 @@ body.history-active #historyMapBadges {
 </div>
 </div>
 
+<div id="priorityPanel" role="dialog" aria-modal="false" aria-labelledby="priorityTitle">
+  <div id="priorityHeader">
+    <h3 id="priorityTitle">Weather Priority</h3>
+    <span class="panel-header-buttons">
+      <button id="minimizePriority" type="button" onclick="minimizePriorityPanel()" aria-label="Minimize weather priority" title="Minimize">&minus;</button>
+      <button id="closePriority" type="button" onclick="closePriorityPanel()" aria-label="Close weather priority" title="Close">&times;</button>
+    </span>
+  </div>
+  <div id="priorityBody">
+    <div id="priorityList"></div>
+    <div id="priorityActions">
+      <button type="button" onclick="resetPrioritySettings()">Defaults</button>
+      <button type="button" onclick="closePriorityPanel()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="shortcutHelpPanel" role="dialog" aria-modal="false" aria-labelledby="shortcutHelpTitle">
   <div id="shortcutHelpHeader">
     <h3 id="shortcutHelpTitle">Keyboard Shortcuts</h3>
@@ -1492,6 +1634,7 @@ body.history-active #historyMapBadges {
       <div class="shortcut-grid">
         <kbd>?</kbd><span>Keyboard shortcuts</span>
         <kbd>S</kbd><span>Setup</span>
+        <kbd>U</kbd><span>Weather priority/colors</span>
         <kbd>H</kbd><span>History playback</span>
         <kbd>A</kbd><span>History alert-count map</span>
         <kbd>G</kbd><span>Event plot</span>
@@ -1698,6 +1841,7 @@ body.history-active #historyMapBadges {
 
 <div id="panelRestoreDock" aria-label="Minimized panels">
   <button id="restoreEventFilterButton" type="button" onclick="restoreEventFilterPopup()">Event Titles</button>
+  <button id="restorePriorityButton" type="button" onclick="restorePriorityPanel()">Weather Priority</button>
   <button id="restorePlotButton" type="button" onclick="restorePlotPanel()">Event Plot</button>
   <button id="restoreHistoryMapButton" type="button" onclick="restoreHistoryMapPanel()">History Alert Map</button>
   <button id="restoreHistoryButton" type="button" onclick="restoreHistoryPanel()">History Playback</button>
@@ -1830,6 +1974,16 @@ let historyFrameWeatherUpdates = 1;
 let historyRetentionDays = 7;
 let weatherUpdatesSinceHistoryFrame = 0;
 const SETUP_SETTINGS_KEY = "nwsDashboardSetupSettings";
+const PRIORITY_SETTINGS_KEY = "nwsDashboardPrioritySettings";
+const DEFAULT_PRIORITY_ORDER = ["tornado-warning", "warning", "statement", "watch", "advisory", "other"];
+const DEFAULT_PRIORITY_COLORS = {
+    "tornado-warning":"#ff8c00",
+    warning:"#ff0000",
+    watch:"#ffff00",
+    advisory:"#00aa00",
+    statement:"#0000ff",
+    other:"#800080"
+};
 const HISTORY_DB_NAME = "nwsDashboardHistory";
 const HISTORY_DB_VERSION = 2;
 const HISTORY_STORE_NAME = "snapshots";
@@ -1906,6 +2060,8 @@ let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
 let isDraggingSetupPanel=false;
 let setupPanelDragOffset={ x:0, y:0 };
+let isDraggingPriorityPanel=false;
+let priorityPanelDragOffset={ x:0, y:0 };
 let isDraggingPrecipPanel=false;
 let precipPanelDragOffset={ x:0, y:0 };
 let isDraggingLightningPanel=false;
@@ -1928,9 +2084,14 @@ let isDraggingPlotCursor=false;
 let plotLastGeometry=null;
 let minimizedPanels={
     eventFilter:false,
+    priority:false,
     plot:false,
     historyMap:false,
     history:false
+};
+let prioritySettings={
+    order:[...DEFAULT_PRIORITY_ORDER],
+    colors:{...DEFAULT_PRIORITY_COLORS}
 };
 
 // ===== DRAG RESIZE =====
@@ -2018,6 +2179,9 @@ window.addEventListener('resize',()=>{
     if(document.getElementById('setupPanel').classList.contains('open')){
         clampSetupPanel();
     }
+    if(document.getElementById('priorityPanel').classList.contains('open')){
+        clampPriorityPanel();
+    }
     if(document.getElementById('plotPanel').classList.contains('open')){
         clampPlotPanel();
         drawEventPlot();
@@ -2097,12 +2261,14 @@ const historyMapStart=document.getElementById('historyMapStart');
 const historyMapStop=document.getElementById('historyMapStop');
 const historyMapPanelStatus=document.getElementById('historyMapPanelStatus');
 const restoreEventFilterButton=document.getElementById('restoreEventFilterButton');
+const restorePriorityButton=document.getElementById('restorePriorityButton');
 const restorePlotButton=document.getElementById('restorePlotButton');
 const restoreHistoryMapButton=document.getElementById('restoreHistoryMapButton');
 const restoreHistoryButton=document.getElementById('restoreHistoryButton');
 
 function updatePanelRestoreDock(){
     restoreEventFilterButton.classList.toggle('visible',minimizedPanels.eventFilter);
+    restorePriorityButton.classList.toggle('visible',minimizedPanels.priority);
     restorePlotButton.classList.toggle('visible',minimizedPanels.plot);
     restoreHistoryMapButton.classList.toggle('visible',minimizedPanels.historyMap);
     restoreHistoryButton.classList.toggle('visible',minimizedPanels.history);
@@ -2246,6 +2412,9 @@ if(window.ResizeObserver){
 // ===== SETUP PANEL =====
 const setupPanel=document.getElementById('setupPanel');
 const setupHeader=document.getElementById('setupHeader');
+const priorityPanel=document.getElementById('priorityPanel');
+const priorityHeader=document.getElementById('priorityHeader');
+const priorityList=document.getElementById('priorityList');
 const weatherUpdateMinutes=document.getElementById('weatherUpdateMinutes');
 const radarUpdateMinutes=document.getElementById('radarUpdateMinutes');
 const historyRecordingToggle=document.getElementById('historyRecordingToggle');
@@ -2399,6 +2568,169 @@ document.addEventListener('mouseup',()=>{
     isDraggingSetupPanel=false;
 });
 
+// ===== WEATHER PRIORITY PANEL =====
+function normalizePrioritySettings(settings){
+    const incomingOrder=Array.isArray(settings?.order) ? settings.order : [];
+    const order=[
+        ...incomingOrder.filter(category=>DEFAULT_PRIORITY_ORDER.includes(category)),
+        ...DEFAULT_PRIORITY_ORDER.filter(category=>!incomingOrder.includes(category))
+    ];
+    const colors={...DEFAULT_PRIORITY_COLORS};
+    if(settings?.colors && typeof settings.colors === "object"){
+        DEFAULT_PRIORITY_ORDER.forEach(category=>{
+            const color=settings.colors[category];
+            if(/^#[0-9a-f]{6}$/i.test(color || "")){
+                colors[category]=color;
+            }
+        });
+    }
+    return { order, colors };
+}
+
+function loadPrioritySettings(){
+    try{
+        prioritySettings=normalizePrioritySettings(JSON.parse(localStorage.getItem(PRIORITY_SETTINGS_KEY)) || {});
+    }catch(error){
+        prioritySettings=normalizePrioritySettings({});
+    }
+}
+
+function savePrioritySettings(){
+    localStorage.setItem(PRIORITY_SETTINGS_KEY,JSON.stringify(prioritySettings));
+}
+
+function formatPriorityLabel(category){
+    return category.replace(/-/g," ");
+}
+
+function renderPriorityList(){
+    if(!priorityList) return;
+    priorityList.innerHTML=prioritySettings.order.map((category,index)=>`
+        <div class="priority-row" data-category="${escapeHtml(category)}">
+            <span class="priority-rank">${index + 1}</span>
+            <span class="priority-name">${escapeHtml(formatPriorityLabel(category))}</span>
+            <input type="color" value="${escapeHtml(prioritySettings.colors[category] || DEFAULT_PRIORITY_COLORS[category])}" onchange="changePriorityColor('${escapeHtml(category)}', this.value)" aria-label="${escapeHtml(formatPriorityLabel(category))} color">
+            <span class="priority-move-buttons">
+                <button type="button" onclick="movePriorityCategory('${escapeHtml(category)}', -1)" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeHtml(formatPriorityLabel(category))} up" title="Move up">&uarr;</button>
+                <button type="button" onclick="movePriorityCategory('${escapeHtml(category)}', 1)" ${index === prioritySettings.order.length - 1 ? "disabled" : ""} aria-label="Move ${escapeHtml(formatPriorityLabel(category))} down" title="Move down">&darr;</button>
+            </span>
+        </div>
+    `).join("");
+}
+
+function applyPrioritySettings(){
+    savePrioritySettings();
+    renderPriorityList();
+    redrawMap();
+}
+
+function changePriorityColor(category,color){
+    if(!DEFAULT_PRIORITY_ORDER.includes(category) || !/^#[0-9a-f]{6}$/i.test(color || "")) return;
+    prioritySettings.colors[category]=color;
+    applyPrioritySettings();
+}
+
+function movePriorityCategory(category,direction){
+    const index=prioritySettings.order.indexOf(category);
+    const nextIndex=index + direction;
+    if(index < 0 || nextIndex < 0 || nextIndex >= prioritySettings.order.length) return;
+    const nextOrder=[...prioritySettings.order];
+    [nextOrder[index],nextOrder[nextIndex]]=[nextOrder[nextIndex],nextOrder[index]];
+    prioritySettings.order=nextOrder;
+    applyPrioritySettings();
+}
+
+function resetPrioritySettings(){
+    prioritySettings=normalizePrioritySettings({});
+    applyPrioritySettings();
+}
+
+function openPriorityPanel(){
+    priorityPanel.classList.add('open');
+    priorityPanel.classList.remove('minimized');
+    minimizedPanels.priority=false;
+    renderPriorityList();
+    updatePanelRestoreDock();
+    clampPriorityPanel();
+}
+
+function closePriorityPanel(){
+    priorityPanel.classList.remove('open','minimized');
+    minimizedPanels.priority=false;
+    updatePanelRestoreDock();
+}
+
+function minimizePriorityPanel(){
+    if(!priorityPanel.classList.contains('open')) return;
+    priorityPanel.classList.add('minimized');
+    minimizedPanels.priority=true;
+    updatePanelRestoreDock();
+}
+
+function restorePriorityPanel(){
+    priorityPanel.classList.add('open');
+    priorityPanel.classList.remove('minimized');
+    minimizedPanels.priority=false;
+    renderPriorityList();
+    updatePanelRestoreDock();
+    clampPriorityPanel();
+}
+
+function togglePriorityPanel(){
+    if(priorityPanel.classList.contains('open') && priorityPanel.classList.contains('minimized')){
+        restorePriorityPanel();
+    } else if(priorityPanel.classList.contains('open')){
+        closePriorityPanel();
+    } else {
+        openPriorityPanel();
+    }
+}
+
+function clampPriorityPanel(){
+    const rect=priorityPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    priorityPanel.style.left=left+"px";
+    priorityPanel.style.top=top+"px";
+    priorityPanel.style.transform="none";
+}
+
+priorityHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=priorityPanel.getBoundingClientRect();
+    priorityPanel.style.left=rect.left+"px";
+    priorityPanel.style.top=rect.top+"px";
+    priorityPanel.style.transform="none";
+
+    isDraggingPriorityPanel=true;
+    priorityPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingPriorityPanel) return;
+
+    const rect=priorityPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-priorityPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-priorityPanelDragOffset.y,0),maxTop);
+
+    priorityPanel.style.left=left+"px";
+    priorityPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingPriorityPanel=false;
+});
+
 // ===== SHORTCUT HELP PANEL =====
 const shortcutHelpPanel=document.getElementById('shortcutHelpPanel');
 const shortcutHelpHeader=document.getElementById('shortcutHelpHeader');
@@ -2467,6 +2799,7 @@ document.addEventListener('mouseup',()=>{
 });
 
 loadSetupSettings();
+loadPrioritySettings();
 syncSetupControls();
 setStartupStatus("setup","Setup: loaded","done");
 
@@ -5214,20 +5547,12 @@ function getPriorityCategory(event) {
 }
 
 function getColor(category) {
-    switch(category) {
-        case "tornado-warning": return "#ff8c00";
-        case "warning": return "#ff0000";
-        case "watch": return "#ffff00";
-        case "advisory": return "#00aa00";
-        case "statement": return "#0000ff";
-        default: return "#800080";
-    }
+    return prioritySettings.colors[category] || DEFAULT_PRIORITY_COLORS[category] || DEFAULT_PRIORITY_COLORS.other;
 }
 
 function getAlertStyle(alerts, fillOpacity){
     const categories = alerts.map(a => getPriorityCategory(a.event));
-    const priorityOrder = ["tornado-warning", "warning", "watch", "advisory", "statement", "other"];
-    const highestCategory = priorityOrder.find(cat => categories.includes(cat)) || "other";
+    const highestCategory = prioritySettings.order.find(cat => categories.includes(cat)) || "other";
     return {
         fillColor:getColor(highestCategory),
         fillOpacity,
@@ -6513,6 +6838,11 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (e.key === 'Escape' && document.getElementById('priorityPanel').classList.contains('open')) {
+        closePriorityPanel();
+        return;
+    }
+
     if (e.key === 'Escape' && document.getElementById('precipPanel').classList.contains('open')) {
         closePrecipPanel();
         return;
@@ -6577,6 +6907,10 @@ document.addEventListener('keydown', (e) => {
     } else if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
         toggleHistoryMapMode();
+        return;
+    } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        togglePriorityPanel();
         return;
     } else if (e.key === 'g' || e.key === 'G') {
         e.preventDefault();
