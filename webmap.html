@@ -633,6 +633,36 @@ body.history-active #historyMapBadges {
     font-family:monospace;
 }
 
+#historyClearProgress {
+    display:none;
+    margin:0 0 10px;
+}
+
+#historyClearProgress.visible {
+    display:block;
+}
+
+#historyClearProgressTrack {
+    height:8px;
+    background:#eee;
+    border:1px solid #bbb;
+    border-radius:4px;
+    overflow:hidden;
+}
+
+#historyClearProgressBar {
+    width:0%;
+    height:100%;
+    background:#1677b7;
+    transition:width 0.2s ease;
+}
+
+#historyClearProgressText {
+    margin-top:4px;
+    color:#444;
+    font-family:monospace;
+}
+
 #historyControls {
     display:flex;
     flex-wrap:wrap;
@@ -1851,6 +1881,12 @@ body.history-active #historyMapBadges {
   <div id="historyBody">
     <input id="historySlider" type="range" min="0" max="0" value="0" oninput="showHistoryFrame(Number(this.value))">
     <div id="historyTime">No history loaded</div>
+    <div id="historyClearProgress" role="status" aria-live="polite">
+      <div id="historyClearProgressTrack" aria-hidden="true">
+        <div id="historyClearProgressBar"></div>
+      </div>
+      <div id="historyClearProgressText">Ready</div>
+    </div>
     <div id="historyControls">
       <label>Start <input id="historyStart" type="datetime-local" onchange="syncHistoryRangeInputs()"></label>
       <label>Stop <input id="historyStop" type="datetime-local" onchange="syncHistoryRangeInputs()"></label>
@@ -1863,7 +1899,7 @@ body.history-active #historyMapBadges {
       <button type="button" onclick="fastForwardHistory()" title="Fast forward">&gt;|</button>
       <button type="button" onclick="reloadHistoryPanel()" title="Load newer history frames">Update</button>
       <button type="button" onclick="searchNextTornadoWarningFrame()" title="Find next tornado warning">Tornado Search</button>
-      <button type="button" onclick="clearHistorySnapshots()" title="Clear saved history">Clear History</button>
+      <button id="clearHistoryButton" type="button" onclick="clearHistorySnapshots()" title="Clear saved history">Clear History</button>
       <button type="button" onclick="closeHistoryPanel()" title="Return to live">Live</button>
     </div>
   </div>
@@ -2065,6 +2101,7 @@ let historyIndexCache = [];
 let historyIndexReady = false;
 let historyIndexLoading = false;
 let historyIndexLoadPromise = null;
+let historyClearGeneration = 0;
 let historyMapActive = false;
 let historyMapLoading = false;
 let historyMapLoadToken = 0;
@@ -3279,6 +3316,7 @@ async function getStoredRadarTileBlob(frameId,coords){
 
 async function saveHistorySnapshot(alerts,timestamp=Date.now()){
     try{
+        const clearGeneration=historyClearGeneration;
         const snapshot={
             timestamp,
             kind:"weather",
@@ -3303,6 +3341,12 @@ async function saveHistorySnapshot(alerts,timestamp=Date.now()){
             store.put(snapshot);
             store.delete(IDBKeyRange.upperBound(timestamp - getHistoryRetentionMs()));
         });
+        if(clearGeneration !== historyClearGeneration){
+            await withHistoryStore("readwrite",(store)=>{
+                store.delete(timestamp);
+            });
+            return;
+        }
         updateHistoryCachesWithSnapshot(snapshot);
     }catch(error){
         console.warn("Unable to save history snapshot",error);
@@ -3323,7 +3367,7 @@ function createHistoryFrameMetadata(frame){
         scope:frame.scope || "US",
         radar:frame.radar || null,
         mapType:frame.mapType || "",
-        alertCount:Object.values(frame.alerts || {}).reduce((total,alerts)=>total + alerts.length,0),
+        alertCount:getUniqueAlertCount(frame.alerts || {}),
         tornadoWarningCounties
     };
 }
@@ -3363,6 +3407,48 @@ function getCachedPlotHistoryFrames(sinceTimestamp=null){
         frames,
         titleCounts:getPlotTitleCountsFromFrames(frames)
     };
+}
+
+function getAlertCountId(alert){
+    const title=alert?.event || "Untitled";
+    return alert?.id || [title,alert?.sent,alert?.expires,alert?.headline].join("|");
+}
+
+function getAlertTitleSummary(alertsByFips){
+    const alertsByTitle={};
+    const countiesByTitle={};
+
+    Object.entries(alertsByFips || {}).forEach(([fips,countyAlerts])=>{
+        if(!Array.isArray(countyAlerts)) return;
+        countyAlerts.forEach(alert=>{
+            if(!alert || typeof alert !== "object") return;
+            const title=alert.event || "Untitled";
+            if(!alertsByTitle[title]) alertsByTitle[title]=new Set();
+            if(!countiesByTitle[title]) countiesByTitle[title]=new Set();
+            alertsByTitle[title].add(getAlertCountId(alert));
+            countiesByTitle[title].add(fips);
+        });
+    });
+
+    const alertTitleCounts={};
+    const countyTitleCounts={};
+    Object.keys(alertsByTitle).forEach(title=>{
+        alertTitleCounts[title]=alertsByTitle[title].size;
+        countyTitleCounts[title]=countiesByTitle[title]?.size || 0;
+    });
+
+    return { alertTitleCounts, countyTitleCounts };
+}
+
+function getUniqueAlertCount(alertsByFips){
+    const ids=new Set();
+    Object.values(alertsByFips || {}).forEach(countyAlerts=>{
+        if(!Array.isArray(countyAlerts)) return;
+        countyAlerts.forEach(alert=>{
+            if(alert && typeof alert === "object") ids.add(getAlertCountId(alert));
+        });
+    });
+    return ids.size;
 }
 
 async function refreshHistoryRetentionWindow(){
@@ -3769,11 +3855,13 @@ async function loadPlotHistoryFramesFromMetadata(sinceTimestamp=null){
 
 function startHistoryIndexBackgroundLoad(){
     if(historyIndexLoading) return historyIndexLoadPromise;
+    const clearGeneration=historyClearGeneration;
     historyIndexLoading=true;
     setStartupStatus("history","History: reading saved frames");
     setStartupTaskProgress("history",0);
     historyIndexLoadPromise=(async()=>{
         const frames=await loadHistorySnapshotsFromDb(null,percent=>setStartupTaskProgress("history",percent));
+        if(clearGeneration !== historyClearGeneration) return [];
         historyIndexCache=frames;
         historyIndexReady=true;
         setStartupTaskProgress("history",100);
@@ -3793,6 +3881,7 @@ function startHistoryIndexBackgroundLoad(){
 
 function startPlotHistoryBackgroundLoad(){
     if(plotHistoryLoading) return plotHistoryLoadPromise;
+    const clearGeneration=historyClearGeneration;
     plotHistoryLoading=true;
     setStartupStatus("plot","Plot cache: reading event counts");
     setStartupStatus("historyMap","History map: reading alert counts");
@@ -3807,6 +3896,9 @@ function startPlotHistoryBackgroundLoad(){
             percent=>setStartupTaskProgress("plot",percent),
             percent=>setStartupTaskProgress("historyMap",percent)
         );
+        if(clearGeneration !== historyClearGeneration){
+            return { frames:[], titleCounts:new Map(), historyMap:{ frames:[], titleCounts:new Map() } };
+        }
         plotHistoryCache={
             frames:Array.isArray(plotHistory.frames) ? plotHistory.frames : [],
             titleCounts:plotHistory.titleCounts instanceof Map ? plotHistory.titleCounts : new Map()
@@ -3857,27 +3949,7 @@ async function startHistoryBackgroundCachesAfterFirstMapPaint(){
 }
 
 function getHistoryFramePlotCounts(frame){
-    const alertTitleCounts={};
-    const countyTitleCounts={};
-    const seenByTitle={};
-    Object.entries(frame?.alerts || {}).forEach(([fips,countyAlerts])=>{
-        if(!Array.isArray(countyAlerts)) return;
-        const countyTitles=new Set();
-        countyAlerts.forEach(alert=>{
-            if(!alert || typeof alert !== "object") return;
-            const title=alert.event || "Untitled";
-            const id=alert.id || [title,alert.sent,alert.expires,alert.headline].join("|");
-            countyTitles.add(title);
-            if(!seenByTitle[title]) seenByTitle[title]=new Set();
-            if(seenByTitle[title].has(id)) return;
-            seenByTitle[title].add(id);
-            alertTitleCounts[title]=(alertTitleCounts[title] || 0) + 1;
-        });
-        countyTitles.forEach(title=>{
-            countyTitleCounts[title]=(countyTitleCounts[title] || 0) + 1;
-        });
-    });
-    return { alertTitleCounts, countyTitleCounts };
+    return getAlertTitleSummary(frame?.alerts || {});
 }
 
 function getHistoryFrameEventTitleCounts(frame){
@@ -4943,24 +5015,47 @@ async function gotoPlotCursorHistoryFrame(){
     }
 }
 
+function updateHistoryClearProgress(percent,message,visible=true){
+    const progress=document.getElementById('historyClearProgress');
+    const bar=document.getElementById('historyClearProgressBar');
+    const text=document.getElementById('historyClearProgressText');
+    if(!progress || !bar || !text) return;
+
+    progress.classList.toggle('visible',visible);
+    bar.style.width=Math.min(Math.max(Math.round(percent),0),100) + "%";
+    text.textContent=message;
+}
+
 async function clearHistorySnapshots(){
     stopHistoryPlayback();
+    const clearButton=document.getElementById('clearHistoryButton');
     try{
+        historyClearGeneration++;
+        if(clearButton) clearButton.disabled=true;
+        updateHistoryClearProgress(5,"Starting clear...");
+        document.getElementById('historyStatus').textContent="Clearing...";
+        historyTime.textContent="Clearing saved history...";
+        await nextPaint();
         await withHistoryStores([HISTORY_STORE_NAME,RADAR_TILE_STORE_NAME],"readwrite",(stores)=>{
             stores[HISTORY_STORE_NAME].clear();
             stores[RADAR_TILE_STORE_NAME].clear();
         });
+        updateHistoryClearProgress(45,"Saved history deleted");
+        await nextPaint();
         historyFrames=[];
         historyFrameCache.clear();
         historyIndexCache=[];
         historyIndexReady=true;
         historyIndexLoading=false;
+        historyIndexLoadPromise=null;
         plotHistoryCache={ frames:[], titleCounts:new Map() };
         plotHistoryReady=true;
         plotHistoryLoading=false;
+        plotHistoryLoadPromise=null;
         historyMapCache={ frames:[], titleCounts:new Map() };
         historyMapReady=true;
         historyMapCacheLoading=false;
+        historyMapCacheLoadPromise=null;
         historyFrameLoadToken++;
         historyFrameTimestamp=null;
         restoreLiveAlertDisplayAfterHistoryMap();
@@ -4976,8 +5071,16 @@ async function clearHistorySnapshots(){
         historyMapRangeLabel="";
         historyStart.value="";
         historyStop.value="";
+        updateHistoryClearProgress(75,"Memory caches reset");
+        await nextPaint();
         updateHistoryPanelState();
         populateHistoryMapEventTypeOptions(new Map());
+        setStartupTaskProgress("history",100);
+        setStartupStatus("history","History: 0 frames","done");
+        setStartupTaskProgress("plot",100);
+        setStartupStatus("plot","Plot cache: 0 frames","done");
+        setStartupTaskProgress("historyMap",100);
+        setStartupStatus("historyMap","History map: 0 frames","done");
         setHistoryMapStatus("History cleared.");
         if(historyModeActive){
             rawData=liveRawData;
@@ -4985,8 +5088,13 @@ async function clearHistorySnapshots(){
             reloadRadar();
             redrawMap();
         }
+        updateHistoryClearProgress(100,"History cleared");
+        setTimeout(()=>updateHistoryClearProgress(0,"Ready",false),1200);
     }catch(error){
+        updateHistoryClearProgress(100,"Unable to clear history");
         console.warn("Unable to clear history snapshots",error);
+    }finally{
+        if(clearButton) clearButton.disabled=false;
     }
 }
 
@@ -5500,20 +5608,17 @@ function getFiltered(fips){
 }
 
 function getEventTitleCounts(){
-    const titles=new Set();
-    Object.values(rawData).flat().forEach(a=>titles.add(a.event || "Untitled"));
-    const counts={};
-    titles.forEach(title=>{
-        const counties=getEventTitleCountyDetails(title);
-        const alertCount=counties.reduce((sum,county)=>sum + county.count,0);
-        if(counties.length){
-            counts[title]={
-                countyCount:counties.length,
-                alertCount
-            };
-        }
-    });
-    return Object.entries(counts).sort((a,b)=>a[0].localeCompare(b[0]));
+    const summary=getAlertTitleSummary(rawData);
+    return Object.keys(summary.alertTitleCounts)
+        .map(title=>[
+            title,
+            {
+                countyCount:summary.countyTitleCounts[title] || 0,
+                alertCount:summary.alertTitleCounts[title] || 0
+            }
+        ])
+        .filter(([,count])=>count.countyCount)
+        .sort((a,b)=>a[0].localeCompare(b[0]));
 }
 
 function renderEventFilterList(){
@@ -5690,7 +5795,7 @@ function renderEventCountyPanelContent(title){
     const heading=document.getElementById('eventCountyTitle');
     const body=document.getElementById('eventCountyBody');
     const counties=getEventTitleCountyDetails(title);
-    const alertCount=counties.reduce((sum,county)=>sum + county.count,0);
+    const alertCount=getAlertTitleSummary(rawData).alertTitleCounts[title] || 0;
 
     heading.textContent=`${title} (${counties.length} counties / ${alertCount} alerts)`;
     if(!counties.length){
@@ -5861,7 +5966,18 @@ function getAlertStyle(alerts, fillOpacity){
     const categories = alerts.map(a => getPriorityCategory(a.event));
     const highestCategory = prioritySettings.order.find(cat => categories.includes(cat)) || "other";
     return {
+        fill:true,
         fillColor:getColor(highestCategory),
+        fillOpacity,
+        color:"#000",
+        weight:0.4
+    };
+}
+
+function getInactiveCountyStyle(fillOpacity=0.05){
+    return {
+        fill:true,
+        fillColor:"#fff",
         fillOpacity,
         color:"#000",
         weight:0.4
@@ -6087,26 +6203,26 @@ function getFeatureStyle(f){
     }
 
     if(countyColorizationMode === 0){
-        return {fill:false,color:"#000",weight:0.4};
+        return getInactiveCountyStyle();
     }
 
     const fips = getFips(f);
     const filtered = getFiltered(fips);
     if(!filtered.length){
         if(countyColorizationMode === 2){
-            return {fill:false,color:"#000",weight:0.4};
+            return getInactiveCountyStyle();
         }
         if(filters.eventTitleMode === "selected" && !filters.eventTitles.length){
             const allAlerts = rawData[fips]||[];
             return allAlerts.length
                 ? getAlertStyle(allAlerts, countyOpacityValue * 0.3)
-                : {fill:false,color:"#000",weight:0.4};
+                : getInactiveCountyStyle();
         }
         if(rawData[fips] && rawData[fips].length > 0){
             const allAlerts = rawData[fips];
             return getAlertStyle(allAlerts, countyOpacityValue * 0.3);
         } else {
-            return {fillOpacity:0.05,color:"#000",weight:0.4};
+            return getInactiveCountyStyle(0.05);
         }
     }
     return getAlertStyle(filtered, countyOpacityValue);
@@ -6156,9 +6272,6 @@ function redrawMap(){
                 trackPrecipTooltipTarget(layer,tooltip,event.latlng);
                 if(historyMapActive){
                     if(!(historyMapCountyCounts[fips] || 0)) return;
-                } else {
-                    if(countyColorizationMode === 0) return;
-                    if(!filteredAlerts.length) return;
                 }
                 layer.setStyle({ fillColor: "#999", fillOpacity: countyOpacityValue });
             });
