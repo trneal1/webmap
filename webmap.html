@@ -3215,6 +3215,17 @@ function hashAlertId(str){
     return (hash>>>0).toString(16);
 }
 
+function getAlertReferenceHashes(alert){
+    const hashes=(Array.isArray(alert?.references) ? alert.references : [])
+        .map(reference=>{
+            if(typeof reference === "string") return reference;
+            return reference?.identifier || reference?.["@id"] || reference?.id || "";
+        })
+        .filter(Boolean)
+        .map(hashAlertId);
+    return [...new Set(hashes)];
+}
+
 function isExpired(a){
     return a.expires && new Date(a.expires).getTime() < getActiveTimestamp();
 }
@@ -6186,6 +6197,7 @@ function processAlerts(data){
             areaDesc:p.areaDesc||"",
             severity:p.severity||"",
             messageType:p.messageType||"",
+            references:p.references||[],
             expires:p.expires,
             sent:p.sent
         };
@@ -6671,6 +6683,7 @@ function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
         <div class="alert" ${isFocused ? 'style="background:#fff7cc;border-left:4px solid #d99a00;padding-left:8px;"' : ""}>
         <b>${a.event}</b><br>
         <span>${a.messageType || "Alert"}</span><br>
+        <b>References:</b> ${getAlertReferenceHashes(a).join(", ") || "None"}<br>
         <i>${a.severity}</i><br><br>
 
         <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
@@ -6745,6 +6758,7 @@ async function loadHistoryMapCountyAlertsIntoSidebar(fips){
             <div class="alert">
             <b>${escapeHtml(a.event || "Untitled")}</b><br>
             <span>${escapeHtml(a.messageType || "Alert")}</span><br>
+            <b>References:</b> ${escapeHtml(getAlertReferenceHashes(a).join(", ") || "None")}<br>
             <i>${escapeHtml(a.severity || "N/A")}</i><br><br>
 
             <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
