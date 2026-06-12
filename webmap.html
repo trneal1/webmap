@@ -413,7 +413,8 @@ body.sidebar-closed #openSidebar {
     background:#eee;
 }
 
-#eventFilterList .event-counties {
+#eventFilterList .event-counties,
+#eventFilterList .event-alerts {
     width:24px;
     height:24px;
     border:1px solid #333;
@@ -425,11 +426,13 @@ body.sidebar-closed #openSidebar {
     padding:0;
 }
 
-#eventFilterList .event-counties:hover {
+#eventFilterList .event-counties:hover,
+#eventFilterList .event-alerts:hover {
     background:#eee;
 }
 
-#eventCountyPanel {
+#eventCountyPanel,
+#eventAlertPanel {
     position:fixed;
     top:92px;
     left:50%;
@@ -444,12 +447,14 @@ body.sidebar-closed #openSidebar {
     font-size:12px;
 }
 
-#eventCountyPanel.open {
+#eventCountyPanel.open,
+#eventAlertPanel.open {
     display:flex;
     flex-direction:column;
 }
 
-#eventCountyHeader {
+#eventCountyHeader,
+#eventAlertHeader {
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -457,9 +462,12 @@ body.sidebar-closed #openSidebar {
     padding:8px 10px;
     background:#f0f0f0;
     border-bottom:1px solid #ccc;
+    cursor:move;
+    user-select:none;
 }
 
-#eventCountyHeader h3 {
+#eventCountyHeader h3,
+#eventAlertHeader h3 {
     margin:0;
     font-size:14px;
     overflow:hidden;
@@ -467,7 +475,8 @@ body.sidebar-closed #openSidebar {
     white-space:nowrap;
 }
 
-#closeEventCountyPanel {
+#closeEventCountyPanel,
+#closeEventAlertPanel {
     width:28px;
     height:28px;
     border:1px solid #333;
@@ -478,11 +487,13 @@ body.sidebar-closed #openSidebar {
     line-height:1;
 }
 
-#closeEventCountyPanel:hover {
+#closeEventCountyPanel:hover,
+#closeEventAlertPanel:hover {
     background:#eee;
 }
 
-#eventCountyBody {
+#eventCountyBody,
+#eventAlertBody {
     overflow:auto;
     padding:8px 10px 10px;
 }
@@ -502,6 +513,17 @@ body.sidebar-closed #openSidebar {
 
 .event-county-row[data-fips]:hover {
     background:#f5f5f5;
+}
+
+.event-county-row.alert-id-match,
+.event-county-row.county-selected {
+    background:#fff7cc;
+    box-shadow:inset 4px 0 0 #d99a00;
+}
+
+.event-county-row.alert-id-match:hover,
+.event-county-row.county-selected:hover {
+    background:#ffef99;
 }
 
 .event-county-row:last-child {
@@ -525,6 +547,50 @@ body.sidebar-closed #openSidebar {
 }
 
 .event-county-expires {
+    text-align:right;
+    white-space:nowrap;
+}
+
+.event-alert-row {
+    display:grid;
+    grid-template-columns:86px minmax(0,1fr) minmax(118px,auto);
+    gap:8px;
+    align-items:center;
+    padding:5px 0;
+    border-bottom:1px solid #eee;
+}
+
+.event-alert-row[data-alert-id] {
+    cursor:pointer;
+}
+
+.event-alert-row[data-alert-id]:hover {
+    background:#f5f5f5;
+}
+
+.event-alert-row.alert-id-selected,
+.event-alert-row.county-alert-match {
+    background:#fff7cc;
+    box-shadow:inset 4px 0 0 #d99a00;
+}
+
+.event-alert-row.alert-id-selected:hover,
+.event-alert-row.county-alert-match:hover {
+    background:#ffef99;
+}
+
+.event-alert-hash {
+    font-family:monospace;
+}
+
+.event-alert-headline {
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.event-alert-expires {
+    font-family:monospace;
     text-align:right;
     white-space:nowrap;
 }
@@ -1695,6 +1761,14 @@ body.history-active #historyMapBadges {
   <div id="eventCountyBody"></div>
 </div>
 
+<div id="eventAlertPanel" role="dialog" aria-modal="false" aria-labelledby="eventAlertTitle">
+  <div id="eventAlertHeader">
+    <h3 id="eventAlertTitle">Active Alert Hashes</h3>
+    <button id="closeEventAlertPanel" type="button" onclick="closeEventAlertPanel()" aria-label="Close active alert hashes" title="Close">&times;</button>
+  </div>
+  <div id="eventAlertBody"></div>
+</div>
+
 <div id="setupPanel" role="dialog" aria-modal="false" aria-labelledby="setupTitle">
   <div id="setupHeader">
     <h3 id="setupTitle">Setup</h3>
@@ -2229,10 +2303,14 @@ let eventTitleCyclePositions={};
 let focusedEventTitle="";
 let focusedEventCountyFips="";
 let activeEventCountyPanelTitle="";
+let activeEventAlertPanelTitle="";
+let activeEventAlertPanelSelectedAlertId="";
 let isDraggingEventFilter=false;
 let eventFilterDragOffset={ x:0, y:0 };
 let isDraggingEventCountyPanel=false;
 let eventCountyPanelDragOffset={ x:0, y:0 };
+let isDraggingEventAlertPanel=false;
+let eventAlertPanelDragOffset={ x:0, y:0 };
 let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
 let isDraggingSetupPanel=false;
@@ -2302,6 +2380,8 @@ const eventFilterDialog=document.getElementById('eventFilterDialog');
 const eventFilterHeader=document.getElementById('eventFilterHeader');
 const eventCountyPanel=document.getElementById('eventCountyPanel');
 const eventCountyHeader=document.getElementById('eventCountyHeader');
+const eventAlertPanel=document.getElementById('eventAlertPanel');
+const eventAlertHeader=document.getElementById('eventAlertHeader');
 
 function clampEventFilterDialog(){
     const rect=eventFilterDialog.getBoundingClientRect();
@@ -2361,6 +2441,19 @@ function clampEventCountyPanel(){
     eventCountyPanel.style.transform="none";
 }
 
+function clampEventAlertPanel(){
+    if(!eventAlertPanel.classList.contains('open')) return;
+    const rect=eventAlertPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(rect.left,0),maxLeft);
+    const top=Math.min(Math.max(rect.top,0),maxTop);
+
+    eventAlertPanel.style.left=left+"px";
+    eventAlertPanel.style.top=top+"px";
+    eventAlertPanel.style.transform="none";
+}
+
 eventCountyHeader.addEventListener('mousedown',(e)=>{
     if(e.button !== 0 || e.target.closest('button')) return;
 
@@ -2394,11 +2487,45 @@ document.addEventListener('mouseup',()=>{
     isDraggingEventCountyPanel=false;
 });
 
+eventAlertHeader.addEventListener('mousedown',(e)=>{
+    if(e.button !== 0 || e.target.closest('button')) return;
+
+    const rect=eventAlertPanel.getBoundingClientRect();
+    eventAlertPanel.style.left=rect.left+"px";
+    eventAlertPanel.style.top=rect.top+"px";
+    eventAlertPanel.style.transform="none";
+
+    isDraggingEventAlertPanel=true;
+    eventAlertPanelDragOffset={
+        x:e.clientX-rect.left,
+        y:e.clientY-rect.top
+    };
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove',(e)=>{
+    if(!isDraggingEventAlertPanel) return;
+
+    const rect=eventAlertPanel.getBoundingClientRect();
+    const maxLeft=Math.max(0,window.innerWidth-rect.width);
+    const maxTop=Math.max(0,window.innerHeight-rect.height);
+    const left=Math.min(Math.max(e.clientX-eventAlertPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-eventAlertPanelDragOffset.y,0),maxTop);
+
+    eventAlertPanel.style.left=left+"px";
+    eventAlertPanel.style.top=top+"px";
+});
+
+document.addEventListener('mouseup',()=>{
+    isDraggingEventAlertPanel=false;
+});
+
 window.addEventListener('resize',()=>{
     if(document.getElementById('eventFilterOverlay').classList.contains('open')){
         clampEventFilterDialog();
     }
     clampEventCountyPanel();
+    clampEventAlertPanel();
     if(document.getElementById('historyPanel').classList.contains('open')){
         clampHistoryPanel();
     }
@@ -3079,6 +3206,7 @@ function getValidLatLng(latValue,lonValue){
 }
 
 function hashAlertId(str){
+    str=String(str || "");
     let hash=0;
     for(let i=0;i<str.length;i++){
         hash=(hash<<5)-hash+str.charCodeAt(i);
@@ -4272,7 +4400,8 @@ async function applyHistoryMapFromControls(){
                 currentSidebarSelection.fips,
                 currentSidebarSelection.name,
                 currentSidebarSelection.feature,
-                false
+                false,
+                currentSidebarSelection.focusAlertId
             );
         }
 
@@ -4371,7 +4500,8 @@ function exitHistoryMapMode(){
             currentSidebarSelection.fips,
             currentSidebarSelection.name,
             currentSidebarSelection.feature,
-            false
+            false,
+            currentSidebarSelection.focusAlertId
         );
     }
 }
@@ -5196,6 +5326,7 @@ function refreshEventFilterListIfOpen(){
     if(document.getElementById('eventFilterOverlay').classList.contains('open')){
         renderEventFilterList();
         refreshEventCountyPanelIfOpen();
+        refreshEventAlertPanelIfOpen();
     }
 }
 
@@ -5243,7 +5374,8 @@ async function showHistoryFrame(index,options={}){
                 currentSidebarSelection.fips,
                 currentSidebarSelection.name,
                 currentSidebarSelection.feature,
-                false
+                false,
+                currentSidebarSelection.focusAlertId
             );
         }
     }catch(error){
@@ -5533,7 +5665,8 @@ function closeHistoryPanel(){
             currentSidebarSelection.fips,
             currentSidebarSelection.name,
             currentSidebarSelection.feature,
-            false
+            false,
+            currentSidebarSelection.focusAlertId
         );
     }
 }
@@ -5644,6 +5777,7 @@ function renderEventFilterList(){
             <span class="event-row-tools">
                 <span class="event-count" title="Included counties / associated alerts">${count.countyCount}c/${count.alertCount}a</span>
                 <button class="event-counties" type="button" data-title="${escapeHtml(title)}" aria-label="Show included counties for ${escapeHtml(title)}" title="Included counties">#</button>
+                <button class="event-alerts" type="button" data-title="${escapeHtml(title)}" aria-label="Show active alert hashes for ${escapeHtml(title)}" title="Active alert hashes">ID</button>
                 <button class="event-cycle" type="button" data-title="${escapeHtml(title)}" data-direction="1" aria-label="Next county for ${escapeHtml(title)}" title="Next county">&#9654;</button>
             </span>
         </label>`;
@@ -5657,6 +5791,11 @@ function renderEventFilterList(){
     list.querySelectorAll('.event-counties').forEach(button=>{
         button.addEventListener('click',()=>{
             openEventCountyPanel(button.dataset.title);
+        });
+    });
+    list.querySelectorAll('.event-alerts').forEach(button=>{
+        button.addEventListener('click',()=>{
+            openEventAlertPanel(button.dataset.title);
         });
     });
 }
@@ -5676,6 +5815,11 @@ function compareSameCode(a,b){
 
 function getAlertExpirationTime(alert){
     const timestamp=new Date(alert?.expires || alert?.ends || 0).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function getAlertIssuedTime(alert){
+    const timestamp=new Date(alert?.sent || alert?.effective || alert?.onset || 0).getTime();
     return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -5732,6 +5876,7 @@ function closeEventFilterPopup(){
     const overlay=document.getElementById('eventFilterOverlay');
     overlay.classList.remove('open','minimized');
     closeEventCountyPanel();
+    closeEventAlertPanel();
     minimizedPanels.eventFilter=false;
     updatePanelRestoreDock();
     focusedEventTitle="";
@@ -5778,6 +5923,57 @@ function getEventTitleCountyDetails(title){
         .sort(compareSameCode);
 }
 
+function getEventTitleAlertDetails(title){
+    const byId=new Map();
+    Object.entries(rawData).forEach(([fips,alerts])=>{
+        (alerts || []).forEach(alert=>{
+            if((alert.event || "Untitled") !== title) return;
+            const id=getAlertCountId(alert);
+            if(!byId.has(id)){
+                const feature=countyFeatureByFips[fips];
+                byId.set(id,{
+                    id,
+                    hash:hashAlertId(alert.id || id),
+                    alert,
+                    fips,
+                    feature,
+                    headline:alert.headline || alert.description || title,
+                    expiresAt:getAlertExpirationTime(alert)
+                });
+            }
+        });
+    });
+    return [...byId.values()].sort((a,b)=>
+        a.hash.localeCompare(b.hash) ||
+        (a.headline || "").localeCompare(b.headline || "")
+    );
+}
+
+function countyHasAlertId(fips,alertId){
+    if(!alertId) return false;
+    return (rawData[fips] || []).some(alert=>getAlertCountId(alert) === alertId);
+}
+
+function getCountyEventAlertIds(title,fips){
+    const ids=new Set();
+    (rawData[fips] || []).forEach(alert=>{
+        if((alert.event || "Untitled") === title){
+            ids.add(getAlertCountId(alert));
+        }
+    });
+    return ids;
+}
+
+function getMostRecentlyIssuedCountyEventAlert(title,fips){
+    return (rawData[fips] || [])
+        .filter(alert=>(alert.event || "Untitled") === title)
+        .sort((a,b)=>{
+            const issuedDelta=(getAlertIssuedTime(b) || 0) - (getAlertIssuedTime(a) || 0);
+            if(issuedDelta) return issuedDelta;
+            return (getAlertExpirationTime(b) || 0) - (getAlertExpirationTime(a) || 0);
+        })[0] || null;
+}
+
 function openEventCountyPanel(title){
     const panel=document.getElementById('eventCountyPanel');
     activeEventCountyPanelTitle=title;
@@ -5791,11 +5987,18 @@ function refreshEventCountyPanelIfOpen(){
     renderEventCountyPanelContent(activeEventCountyPanelTitle);
 }
 
+function refreshEventAlertPanelIfOpen(){
+    if(!eventAlertPanel.classList.contains('open') || !activeEventAlertPanelTitle) return;
+    renderEventAlertPanelContent(activeEventAlertPanelTitle);
+}
+
 function renderEventCountyPanelContent(title){
     const heading=document.getElementById('eventCountyTitle');
     const body=document.getElementById('eventCountyBody');
     const counties=getEventTitleCountyDetails(title);
     const alertCount=getAlertTitleSummary(rawData).alertTitleCounts[title] || 0;
+    const selectedAlertId=activeEventAlertPanelTitle === title ? activeEventAlertPanelSelectedAlertId : "";
+    const selectedCountyFips=focusedEventTitle === title ? focusedEventCountyFips : "";
 
     heading.textContent=`${title} (${counties.length} counties / ${alertCount} alerts)`;
     if(!counties.length){
@@ -5808,14 +6011,18 @@ function renderEventCountyPanelContent(title){
                 <b class="event-county-count">Alerts</b>
                 <b class="event-county-expires">Expires</b>
             </div>
-            ${counties.map(county=>`
-                <div class="event-county-row" data-fips="${escapeHtml(county.fips)}" data-title="${escapeHtml(title)}" title="Zoom to ${escapeHtml(county.name)}, ${escapeHtml(county.state)}">
+            ${counties.map(county=>{
+                const classes=["event-county-row"];
+                if(String(county.fips) === String(selectedCountyFips)) classes.push("county-selected");
+                if(countyHasAlertId(county.fips,selectedAlertId)) classes.push("alert-id-match");
+                return `
+                <div class="${classes.join(" ")}" data-fips="${escapeHtml(county.fips)}" data-title="${escapeHtml(title)}" title="Zoom to ${escapeHtml(county.name)}, ${escapeHtml(county.state)}">
                     <span class="event-county-code">${escapeHtml(county.sameCode)}</span>
                     <span class="event-county-name" title="${escapeHtml(county.name)}, ${escapeHtml(county.state)}">${escapeHtml(county.name)}, ${escapeHtml(county.state)}</span>
                     <span class="event-county-count">${county.count}</span>
                     <span class="event-county-expires" title="${Number.isFinite(county.expiresAt) ? escapeHtml(new Date(county.expiresAt).toLocaleString()) : "N/A"}">${escapeHtml(formatCountyExpirationTime(county.expiresAt))}</span>
-                </div>
-            `).join("")}`;
+                </div>`;
+            }).join("")}`;
     }
 
     body.querySelectorAll('.event-county-row[data-fips]').forEach(row=>{
@@ -5823,6 +6030,62 @@ function renderEventCountyPanelContent(title){
             focusEventCounty(row.dataset.title, row.dataset.fips);
         });
     });
+    const firstMatch=body.querySelector('.event-county-row.county-selected') ||
+        body.querySelector('.event-county-row.alert-id-match');
+    if(firstMatch){
+        firstMatch.scrollIntoView({ block:"nearest" });
+    }
+}
+
+function openEventAlertPanel(title){
+    if(activeEventAlertPanelTitle !== title){
+        activeEventAlertPanelSelectedAlertId="";
+    }
+    activeEventAlertPanelTitle=title;
+    renderEventAlertPanelContent(title);
+    eventAlertPanel.classList.add('open');
+    clampEventAlertPanel();
+}
+
+function renderEventAlertPanelContent(title){
+    const heading=document.getElementById('eventAlertTitle');
+    const body=document.getElementById('eventAlertBody');
+    const alerts=getEventTitleAlertDetails(title);
+    const countyAlertIds=focusedEventTitle === title && focusedEventCountyFips
+        ? getCountyEventAlertIds(title,focusedEventCountyFips)
+        : new Set();
+
+    heading.textContent=`${title} (${alerts.length} unique alerts)`;
+    if(!alerts.length){
+        body.innerHTML='<div class="alert">No active alert hashes found</div>';
+    } else {
+        body.innerHTML=`
+            <div class="event-alert-row">
+                <b>Hash</b>
+                <b>Headline</b>
+                <b class="event-alert-expires">Expires</b>
+            </div>
+            ${alerts.map(item=>{
+                const classes=["event-alert-row"];
+                if(item.id === activeEventAlertPanelSelectedAlertId) classes.push("alert-id-selected");
+                if(countyAlertIds.has(item.id)) classes.push("county-alert-match");
+                return `
+                <div class="${classes.join(" ")}" data-alert-id="${escapeHtml(item.id)}" title="Show alert ${escapeHtml(item.hash)}">
+                    <span class="event-alert-hash">${escapeHtml(item.hash)}</span>
+                    <span class="event-alert-headline" title="${escapeHtml(item.headline)}">${escapeHtml(item.headline)}</span>
+                    <span class="event-alert-expires" title="${Number.isFinite(item.expiresAt) ? escapeHtml(new Date(item.expiresAt).toLocaleString()) : "N/A"}">${escapeHtml(formatCountyExpirationTime(item.expiresAt))}</span>
+                </div>`;
+            }).join("")}`;
+    }
+
+    body.querySelectorAll('.event-alert-row[data-alert-id]').forEach(row=>{
+        row.addEventListener('click',()=>showEventAlertById(row.dataset.alertId));
+    });
+    const firstMatch=body.querySelector('.event-alert-row.alert-id-selected') ||
+        body.querySelector('.event-alert-row.county-alert-match');
+    if(firstMatch){
+        firstMatch.scrollIntoView({ block:"nearest" });
+    }
 }
 
 function closeEventCountyPanel(){
@@ -5831,19 +6094,51 @@ function closeEventCountyPanel(){
     activeEventCountyPanelTitle="";
 }
 
+function closeEventAlertPanel(){
+    eventAlertPanel.classList.remove('open');
+    isDraggingEventAlertPanel=false;
+    activeEventAlertPanelTitle="";
+    activeEventAlertPanelSelectedAlertId="";
+}
+
+function showEventAlertById(alertId){
+    focusedEventTitle="";
+    focusedEventCountyFips="";
+    clearFocusedEventCountyHighlight();
+    activeEventAlertPanelSelectedAlertId=alertId;
+    refreshEventAlertPanelIfOpen();
+    refreshEventCountyPanelIfOpen();
+
+    for(const [fips,alerts] of Object.entries(rawData)){
+        if(!(alerts || []).some(alert=>getAlertCountId(alert) === alertId)) continue;
+        const feature=countyFeatureByFips[fips];
+        if(!feature) continue;
+        showSidebar(fips,feature.properties.NAME || fips,feature,true,alertId);
+        return;
+    }
+}
+
 function focusEventCounty(title,fips){
     const feature=countyFeatureByFips[fips];
     const alerts=rawData[fips] || [];
     if(!feature || !alerts.some(a=>(a.event || "Untitled") === title)) return;
 
+    const focusAlert=getMostRecentlyIssuedCountyEventAlert(title,fips);
+    const focusAlertId=focusAlert ? getAlertCountId(focusAlert) : null;
+
     focusedEventTitle=title;
     focusedEventCountyFips=fips;
+    activeEventAlertPanelSelectedAlertId="";
     updateFocusedEventCountyHighlight();
+    refreshEventCountyPanelIfOpen();
+    refreshEventAlertPanelIfOpen();
 
     const bounds=L.geoJson(feature).getBounds();
     if(bounds.isValid()){
         map.fitBounds(bounds,{ padding:[48,48], maxZoom:8, animate:true });
     }
+
+    showSidebar(fips,feature.properties.NAME || fips,feature,true,focusAlertId);
 }
 
 function getEventTitleCounties(title){
@@ -6333,9 +6628,9 @@ function openSidebar(){
     resizeMapAfterSidebarChange();
 }
 
-function showSidebar(fips,name,f,shouldOpen=true){
+function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
     if(shouldOpen) openSidebar();
-    currentSidebarSelection={ fips, name, feature:f };
+    currentSidebarSelection={ fips, name, feature:f, focusAlertId };
     const alerts=rawData[fips]||[];
     const stateFips = String(f.properties.STATE).padStart(2,'0');
     const countyFips = String(f.properties.COUNTY).padStart(3,'0');
@@ -6360,11 +6655,19 @@ function showSidebar(fips,name,f,shouldOpen=true){
         return;
     }
 
-    alerts.sort((a,b)=> new Date(a.expires) - new Date(b.expires));
+    const displayAlerts=[...alerts].sort((a,b)=>{
+        if(focusAlertId){
+            const aFocused=getAlertCountId(a) === focusAlertId;
+            const bFocused=getAlertCountId(b) === focusAlertId;
+            if(aFocused !== bFocused) return aFocused ? -1 : 1;
+        }
+        return new Date(a.expires) - new Date(b.expires);
+    });
 
-    alerts.forEach(a=>{
+    displayAlerts.forEach(a=>{
+        const isFocused=focusAlertId && getAlertCountId(a) === focusAlertId;
         html+=`
-        <div class="alert">
+        <div class="alert" ${isFocused ? 'style="background:#fff7cc;border-left:4px solid #d99a00;padding-left:8px;"' : ""}>
         <b>${a.event}</b><br>
         <i>${a.severity}</i><br><br>
 
@@ -7424,6 +7727,11 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === 'Escape' && document.getElementById('eventCountyPanel').classList.contains('open')) {
         closeEventCountyPanel();
+        return;
+    }
+
+    if (e.key === 'Escape' && document.getElementById('eventAlertPanel').classList.contains('open')) {
+        closeEventAlertPanel();
         return;
     }
 
