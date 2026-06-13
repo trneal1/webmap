@@ -6594,7 +6594,10 @@ function redrawMap(){
             if(blinkToggle.checked &&
                !historyMapActive &&
                countyColorizationMode !== 0 &&
-               filteredAlerts.some(a=>((getActiveTimestamp()-new Date(a.sent).getTime())/1000)<3600)){
+               filteredAlerts.some(a=>
+                   String(a.messageType || "").toLowerCase() === "alert" &&
+                   ((getActiveTimestamp()-new Date(a.sent).getTime())/1000)<3600
+               )){
                 let visible=true;
                 blinkIntervals[fips]=setInterval(()=>{
                     visible=!visible;
