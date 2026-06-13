@@ -1887,6 +1887,7 @@ body.history-active #historyMapBadges {
         <kbd>I</kbd><span>Zoom in while held</span>
         <kbd>O</kbd><span>Zoom out while held</span>
         <kbd>R</kbd><span>Radar on/off</span>
+        <kbd>V</kbd><span>NWS alert polygons on/off</span>
         <kbd>M</kbd><span>Switch map type</span>
         <kbd>C</kbd><span>Cycle county colorization</span>
         <kbd>Space</kbd><span>Sample precipitation at cursor</span>
@@ -2140,8 +2141,13 @@ map.getPane('precipPane').style.pointerEvents = 'none';
 map.createPane('lightningPane');
 map.getPane('lightningPane').style.zIndex = 460;
 map.getPane('lightningPane').style.pointerEvents = 'none';
+map.createPane('alertPolygonPane');
+map.getPane('alertPolygonPane').style.zIndex = 425;
 
 let geoLayer, geojsonData, rawData = {}, blinkIntervals = {};
+let liveAlertFeatures = [];
+let alertPolygonLayer = null;
+let alertPolygonsVisible = false;
 let countyFeatureByFips = {};
 let radarLayer = null;
 let precipLayer = null;
@@ -6211,10 +6217,72 @@ function processAlerts(data){
     return out;
 }
 
+function getAlertPolygonStyle(feature){
+    const category=getPriorityCategory(feature?.properties?.event);
+    const color=getColor(category);
+    return {
+        pane:"alertPolygonPane",
+        color,
+        weight:3,
+        opacity:0.95,
+        fill:true,
+        fillColor:color,
+        fillOpacity:0.4,
+        interactive:true
+    };
+}
+
+function showAlertPolygonInSidebar(feature){
+    const alertId=feature?.id || feature?.properties?.id;
+    if(!alertId) return;
+    showEventAlertById(alertId);
+}
+
+function redrawAlertPolygonLayer(){
+    if(alertPolygonLayer){
+        map.removeLayer(alertPolygonLayer);
+        alertPolygonLayer=null;
+    }
+    if(!alertPolygonsVisible || historyModeActive) return;
+
+    const polygonFeatures=liveAlertFeatures
+        .filter(feature=>{
+            const type=feature?.geometry?.type;
+            return type === "Polygon" || type === "MultiPolygon";
+        })
+        .sort((a,b)=>{
+            const aRank=prioritySettings.order.indexOf(getPriorityCategory(a?.properties?.event));
+            const bRank=prioritySettings.order.indexOf(getPriorityCategory(b?.properties?.event));
+            return bRank - aRank;
+        });
+    if(!polygonFeatures.length) return;
+
+    alertPolygonLayer=L.geoJson({
+        type:"FeatureCollection",
+        features:polygonFeatures
+    },{
+        pane:"alertPolygonPane",
+        style:getAlertPolygonStyle,
+        interactive:true,
+        onEachFeature:(feature,layer)=>{
+            layer.on("click",event=>{
+                if(event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+                showAlertPolygonInSidebar(feature);
+            });
+        }
+    }).addTo(map);
+}
+
+function toggleAlertPolygons(){
+    alertPolygonsVisible=!alertPolygonsVisible;
+    redrawAlertPolygonLayer();
+}
+
 async function refresh(){
     nextWeatherUpdate = Date.now() + weatherUpdateInterval;
     const r=await fetch(ALERTS_URL);
     const d=await r.json();
+    liveAlertFeatures=Array.isArray(d.features) ? d.features : [];
     liveRawData=processAlerts(d);
     if(historyRecordingEnabled){
         weatherUpdatesSinceHistoryFrame++;
@@ -6612,6 +6680,7 @@ function redrawMap(){
     }).addTo(map);
 
     updateFocusedEventCountyHighlight();
+    redrawAlertPolygonLayer();
     if(stateLayer) stateLayer.bringToFront();
 }
 
@@ -7839,6 +7908,10 @@ document.addEventListener('keydown', (e) => {
         // Toggle radar on/off
         radarToggle.checked = !radarToggle.checked;
         toggleRadar();
+        return;
+    } else if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        toggleAlertPolygons();
         return;
     } else if (e.key === 'm' || e.key === 'M') {
         // Toggle between Street and Topological maps
