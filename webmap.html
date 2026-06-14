@@ -431,8 +431,7 @@ body.sidebar-closed #openSidebar {
     background:#eee;
 }
 
-#eventCountyPanel,
-#eventAlertPanel {
+.event-detail-panel {
     position:fixed;
     top:92px;
     left:50%;
@@ -443,18 +442,12 @@ body.sidebar-closed #openSidebar {
     background:#fff;
     border:1px solid #333;
     box-shadow:0 6px 22px rgba(0,0,0,0.28);
-    display:none;
+    display:flex;
+    flex-direction:column;
     font-size:12px;
 }
 
-#eventCountyPanel.open,
-#eventAlertPanel.open {
-    display:flex;
-    flex-direction:column;
-}
-
-#eventCountyHeader,
-#eventAlertHeader {
+.event-detail-header {
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -466,8 +459,7 @@ body.sidebar-closed #openSidebar {
     user-select:none;
 }
 
-#eventCountyHeader h3,
-#eventAlertHeader h3 {
+.event-detail-header h3 {
     margin:0;
     font-size:14px;
     overflow:hidden;
@@ -475,8 +467,7 @@ body.sidebar-closed #openSidebar {
     white-space:nowrap;
 }
 
-#closeEventCountyPanel,
-#closeEventAlertPanel {
+.event-detail-close {
     width:28px;
     height:28px;
     border:1px solid #333;
@@ -487,13 +478,12 @@ body.sidebar-closed #openSidebar {
     line-height:1;
 }
 
-#closeEventCountyPanel:hover,
-#closeEventAlertPanel:hover {
+.event-detail-close:hover {
     background:#eee;
 }
 
-#eventCountyBody,
-#eventAlertBody {
+.event-detail-body {
+    min-height:0;
     overflow:auto;
     padding:8px 10px 10px;
 }
@@ -1753,21 +1743,7 @@ body.history-active #historyMapBadges {
   </div>
 </div>
 
-<div id="eventCountyPanel" role="dialog" aria-modal="false" aria-labelledby="eventCountyTitle">
-  <div id="eventCountyHeader">
-    <h3 id="eventCountyTitle">Included Counties</h3>
-    <button id="closeEventCountyPanel" type="button" onclick="closeEventCountyPanel()" aria-label="Close included counties" title="Close">&times;</button>
-  </div>
-  <div id="eventCountyBody"></div>
-</div>
-
-<div id="eventAlertPanel" role="dialog" aria-modal="false" aria-labelledby="eventAlertTitle">
-  <div id="eventAlertHeader">
-    <h3 id="eventAlertTitle">Active Alert Hashes</h3>
-    <button id="closeEventAlertPanel" type="button" onclick="closeEventAlertPanel()" aria-label="Close active alert hashes" title="Close">&times;</button>
-  </div>
-  <div id="eventAlertBody"></div>
-</div>
+<div id="eventDetailPanels"></div>
 
 <div id="setupPanel" role="dialog" aria-modal="false" aria-labelledby="setupTitle">
   <div id="setupHeader">
@@ -2309,15 +2285,14 @@ let eventTitleFilterSnapshot={ mode:"all", titles:[] };
 let eventTitleCyclePositions={};
 let focusedEventTitle="";
 let focusedEventCountyFips="";
-let activeEventCountyPanelTitle="";
-let activeEventAlertPanelTitle="";
-let activeEventAlertPanelSelectedAlertId="";
+const eventCountyPanels=new Map();
+const eventAlertPanels=new Map();
+const eventAlertPanelSelectedIds=new Map();
+let eventDetailPanelZIndex=2500;
 let isDraggingEventFilter=false;
 let eventFilterDragOffset={ x:0, y:0 };
-let isDraggingEventCountyPanel=false;
-let eventCountyPanelDragOffset={ x:0, y:0 };
-let isDraggingEventAlertPanel=false;
-let eventAlertPanelDragOffset={ x:0, y:0 };
+let draggedEventDetailPanel=null;
+let eventDetailPanelDragOffset={ x:0, y:0 };
 let isDraggingHistoryPanel=false;
 let historyPanelDragOffset={ x:0, y:0 };
 let isDraggingSetupPanel=false;
@@ -2385,10 +2360,7 @@ document.addEventListener('mouseup', () => { isResizing = false; });
 // ===== EVENT FILTER DRAG =====
 const eventFilterDialog=document.getElementById('eventFilterDialog');
 const eventFilterHeader=document.getElementById('eventFilterHeader');
-const eventCountyPanel=document.getElementById('eventCountyPanel');
-const eventCountyHeader=document.getElementById('eventCountyHeader');
-const eventAlertPanel=document.getElementById('eventAlertPanel');
-const eventAlertHeader=document.getElementById('eventAlertHeader');
+const eventDetailPanels=document.getElementById('eventDetailPanels');
 
 function clampEventFilterDialog(){
     const rect=eventFilterDialog.getBoundingClientRect();
@@ -2435,42 +2407,32 @@ document.addEventListener('mouseup',()=>{
     isDraggingEventFilter=false;
 });
 
-function clampEventCountyPanel(){
-    if(!eventCountyPanel.classList.contains('open')) return;
-    const rect=eventCountyPanel.getBoundingClientRect();
+function clampEventDetailPanel(panel){
+    if(!panel?.isConnected) return;
+    const rect=panel.getBoundingClientRect();
     const maxLeft=Math.max(0,window.innerWidth-rect.width);
     const maxTop=Math.max(0,window.innerHeight-rect.height);
     const left=Math.min(Math.max(rect.left,0),maxLeft);
     const top=Math.min(Math.max(rect.top,0),maxTop);
 
-    eventCountyPanel.style.left=left+"px";
-    eventCountyPanel.style.top=top+"px";
-    eventCountyPanel.style.transform="none";
+    panel.style.left=left+"px";
+    panel.style.top=top+"px";
+    panel.style.transform="none";
 }
 
-function clampEventAlertPanel(){
-    if(!eventAlertPanel.classList.contains('open')) return;
-    const rect=eventAlertPanel.getBoundingClientRect();
-    const maxLeft=Math.max(0,window.innerWidth-rect.width);
-    const maxTop=Math.max(0,window.innerHeight-rect.height);
-    const left=Math.min(Math.max(rect.left,0),maxLeft);
-    const top=Math.min(Math.max(rect.top,0),maxTop);
-
-    eventAlertPanel.style.left=left+"px";
-    eventAlertPanel.style.top=top+"px";
-    eventAlertPanel.style.transform="none";
-}
-
-eventCountyHeader.addEventListener('mousedown',(e)=>{
+eventDetailPanels.addEventListener('mousedown',(e)=>{
+    const panel=e.target.closest('.event-detail-panel');
+    if(panel) panel.style.zIndex=String(++eventDetailPanelZIndex);
     if(e.button !== 0 || e.target.closest('button')) return;
+    if(!e.target.closest('.event-detail-header') || !panel) return;
 
-    const rect=eventCountyPanel.getBoundingClientRect();
-    eventCountyPanel.style.left=rect.left+"px";
-    eventCountyPanel.style.top=rect.top+"px";
-    eventCountyPanel.style.transform="none";
+    const rect=panel.getBoundingClientRect();
+    panel.style.left=rect.left+"px";
+    panel.style.top=rect.top+"px";
+    panel.style.transform="none";
 
-    isDraggingEventCountyPanel=true;
-    eventCountyPanelDragOffset={
+    draggedEventDetailPanel=panel;
+    eventDetailPanelDragOffset={
         x:e.clientX-rect.left,
         y:e.clientY-rect.top
     };
@@ -2478,61 +2440,27 @@ eventCountyHeader.addEventListener('mousedown',(e)=>{
 });
 
 document.addEventListener('mousemove',(e)=>{
-    if(!isDraggingEventCountyPanel) return;
+    if(!draggedEventDetailPanel) return;
 
-    const rect=eventCountyPanel.getBoundingClientRect();
+    const rect=draggedEventDetailPanel.getBoundingClientRect();
     const maxLeft=Math.max(0,window.innerWidth-rect.width);
     const maxTop=Math.max(0,window.innerHeight-rect.height);
-    const left=Math.min(Math.max(e.clientX-eventCountyPanelDragOffset.x,0),maxLeft);
-    const top=Math.min(Math.max(e.clientY-eventCountyPanelDragOffset.y,0),maxTop);
+    const left=Math.min(Math.max(e.clientX-eventDetailPanelDragOffset.x,0),maxLeft);
+    const top=Math.min(Math.max(e.clientY-eventDetailPanelDragOffset.y,0),maxTop);
 
-    eventCountyPanel.style.left=left+"px";
-    eventCountyPanel.style.top=top+"px";
+    draggedEventDetailPanel.style.left=left+"px";
+    draggedEventDetailPanel.style.top=top+"px";
 });
 
 document.addEventListener('mouseup',()=>{
-    isDraggingEventCountyPanel=false;
-});
-
-eventAlertHeader.addEventListener('mousedown',(e)=>{
-    if(e.button !== 0 || e.target.closest('button')) return;
-
-    const rect=eventAlertPanel.getBoundingClientRect();
-    eventAlertPanel.style.left=rect.left+"px";
-    eventAlertPanel.style.top=rect.top+"px";
-    eventAlertPanel.style.transform="none";
-
-    isDraggingEventAlertPanel=true;
-    eventAlertPanelDragOffset={
-        x:e.clientX-rect.left,
-        y:e.clientY-rect.top
-    };
-    e.preventDefault();
-});
-
-document.addEventListener('mousemove',(e)=>{
-    if(!isDraggingEventAlertPanel) return;
-
-    const rect=eventAlertPanel.getBoundingClientRect();
-    const maxLeft=Math.max(0,window.innerWidth-rect.width);
-    const maxTop=Math.max(0,window.innerHeight-rect.height);
-    const left=Math.min(Math.max(e.clientX-eventAlertPanelDragOffset.x,0),maxLeft);
-    const top=Math.min(Math.max(e.clientY-eventAlertPanelDragOffset.y,0),maxTop);
-
-    eventAlertPanel.style.left=left+"px";
-    eventAlertPanel.style.top=top+"px";
-});
-
-document.addEventListener('mouseup',()=>{
-    isDraggingEventAlertPanel=false;
+    draggedEventDetailPanel=null;
 });
 
 window.addEventListener('resize',()=>{
     if(document.getElementById('eventFilterOverlay').classList.contains('open')){
         clampEventFilterDialog();
     }
-    clampEventCountyPanel();
-    clampEventAlertPanel();
+    document.querySelectorAll('.event-detail-panel').forEach(clampEventDetailPanel);
     if(document.getElementById('historyPanel').classList.contains('open')){
         clampHistoryPanel();
     }
@@ -5893,8 +5821,7 @@ function openEventFilterPopup(){
 function closeEventFilterPopup(){
     const overlay=document.getElementById('eventFilterOverlay');
     overlay.classList.remove('open','minimized');
-    closeEventCountyPanel();
-    closeEventAlertPanel();
+    closeAllEventDetailPanels();
     minimizedPanels.eventFilter=false;
     updatePanelRestoreDock();
     focusedEventTitle="";
@@ -5993,29 +5920,59 @@ function getMostRecentlyIssuedCountyEventAlert(title,fips){
 }
 
 function openEventCountyPanel(title){
-    const panel=document.getElementById('eventCountyPanel');
-    activeEventCountyPanelTitle=title;
-    renderEventCountyPanelContent(title);
-    panel.classList.add('open');
-    clampEventCountyPanel();
+    let panel=eventCountyPanels.get(title);
+    if(!panel){
+        panel=createEventDetailPanel('county',title);
+        eventCountyPanels.set(title,panel);
+    }
+    renderEventCountyPanelContent(panel,title);
+    bringEventDetailPanelToFront(panel);
 }
 
 function refreshEventCountyPanelIfOpen(){
-    if(!eventCountyPanel.classList.contains('open') || !activeEventCountyPanelTitle) return;
-    renderEventCountyPanelContent(activeEventCountyPanelTitle);
+    eventCountyPanels.forEach((panel,title)=>renderEventCountyPanelContent(panel,title));
 }
 
 function refreshEventAlertPanelIfOpen(){
-    if(!eventAlertPanel.classList.contains('open') || !activeEventAlertPanelTitle) return;
-    renderEventAlertPanelContent(activeEventAlertPanelTitle);
+    eventAlertPanels.forEach((panel,title)=>renderEventAlertPanelContent(panel,title));
 }
 
-function renderEventCountyPanelContent(title){
-    const heading=document.getElementById('eventCountyTitle');
-    const body=document.getElementById('eventCountyBody');
+function createEventDetailPanel(type,title){
+    const panel=document.createElement('div');
+    panel.className=`event-detail-panel event-${type}-panel`;
+    panel.dataset.title=title;
+    panel.dataset.type=type;
+    panel.setAttribute('role','dialog');
+    panel.setAttribute('aria-modal','false');
+    panel.innerHTML=`
+        <div class="event-detail-header">
+            <h3></h3>
+            <button class="event-detail-close" type="button" aria-label="Close ${type} list" title="Close">&times;</button>
+        </div>
+        <div class="event-detail-body"></div>`;
+    panel.querySelector('.event-detail-close').addEventListener('click',()=>closeEventDetailPanel(panel));
+    eventDetailPanels.appendChild(panel);
+
+    const panelCount=eventCountyPanels.size+eventAlertPanels.size;
+    const rect=panel.getBoundingClientRect();
+    const offset=(panelCount % 8)*24;
+    panel.style.left=Math.max(0,(window.innerWidth-rect.width)/2+offset-84)+"px";
+    panel.style.top=Math.min(Math.max(12,92+offset),Math.max(12,window.innerHeight-rect.height))+"px";
+    panel.style.transform="none";
+    clampEventDetailPanel(panel);
+    return panel;
+}
+
+function bringEventDetailPanelToFront(panel){
+    panel.style.zIndex=String(++eventDetailPanelZIndex);
+}
+
+function renderEventCountyPanelContent(panel,title){
+    const heading=panel.querySelector('h3');
+    const body=panel.querySelector('.event-detail-body');
     const counties=getEventTitleCountyDetails(title);
     const alertCount=getAlertTitleSummary(rawData).alertTitleCounts[title] || 0;
-    const selectedAlertId=activeEventAlertPanelTitle === title ? activeEventAlertPanelSelectedAlertId : "";
+    const selectedAlertId=eventAlertPanelSelectedIds.get(title) || "";
     const selectedCountyFips=focusedEventTitle === title ? focusedEventCountyFips : "";
 
     heading.textContent=`${title} (${counties.length} counties / ${alertCount} alerts)`;
@@ -6056,18 +6013,18 @@ function renderEventCountyPanelContent(title){
 }
 
 function openEventAlertPanel(title){
-    if(activeEventAlertPanelTitle !== title){
-        activeEventAlertPanelSelectedAlertId="";
+    let panel=eventAlertPanels.get(title);
+    if(!panel){
+        panel=createEventDetailPanel('alert',title);
+        eventAlertPanels.set(title,panel);
     }
-    activeEventAlertPanelTitle=title;
-    renderEventAlertPanelContent(title);
-    eventAlertPanel.classList.add('open');
-    clampEventAlertPanel();
+    renderEventAlertPanelContent(panel,title);
+    bringEventDetailPanelToFront(panel);
 }
 
-function renderEventAlertPanelContent(title){
-    const heading=document.getElementById('eventAlertTitle');
-    const body=document.getElementById('eventAlertBody');
+function renderEventAlertPanelContent(panel,title){
+    const heading=panel.querySelector('h3');
+    const body=panel.querySelector('.event-detail-body');
     const alerts=getEventTitleAlertDetails(title);
     const countyAlertIds=focusedEventTitle === title && focusedEventCountyFips
         ? getCountyEventAlertIds(title,focusedEventCountyFips)
@@ -6085,7 +6042,7 @@ function renderEventAlertPanelContent(title){
             </div>
             ${alerts.map(item=>{
                 const classes=["event-alert-row"];
-                if(item.id === activeEventAlertPanelSelectedAlertId) classes.push("alert-id-selected");
+                if(item.id === eventAlertPanelSelectedIds.get(title)) classes.push("alert-id-selected");
                 if(countyAlertIds.has(item.id)) classes.push("county-alert-match");
                 return `
                 <div class="${classes.join(" ")}" data-alert-id="${escapeHtml(item.id)}" title="Show alert ${escapeHtml(item.hash)}">
@@ -6097,7 +6054,7 @@ function renderEventAlertPanelContent(title){
     }
 
     body.querySelectorAll('.event-alert-row[data-alert-id]').forEach(row=>{
-        row.addEventListener('click',()=>showEventAlertById(row.dataset.alertId));
+        row.addEventListener('click',()=>showEventAlertById(title,row.dataset.alertId));
     });
     const firstMatch=body.querySelector('.event-alert-row.alert-id-selected') ||
         body.querySelector('.event-alert-row.county-alert-match');
@@ -6106,24 +6063,32 @@ function renderEventAlertPanelContent(title){
     }
 }
 
-function closeEventCountyPanel(){
-    eventCountyPanel.classList.remove('open');
-    isDraggingEventCountyPanel=false;
-    activeEventCountyPanelTitle="";
+function closeEventDetailPanel(panel){
+    if(!panel) return;
+    const panels=panel.dataset.type === 'county' ? eventCountyPanels : eventAlertPanels;
+    panels.delete(panel.dataset.title);
+    if(panel.dataset.type === 'alert') eventAlertPanelSelectedIds.delete(panel.dataset.title);
+    if(draggedEventDetailPanel === panel) draggedEventDetailPanel=null;
+    panel.remove();
 }
 
-function closeEventAlertPanel(){
-    eventAlertPanel.classList.remove('open');
-    isDraggingEventAlertPanel=false;
-    activeEventAlertPanelTitle="";
-    activeEventAlertPanelSelectedAlertId="";
+function closeTopmostEventDetailPanel(){
+    const panels=[...document.querySelectorAll('.event-detail-panel')];
+    if(!panels.length) return false;
+    panels.sort((a,b)=>(Number(b.style.zIndex) || 0)-(Number(a.style.zIndex) || 0));
+    closeEventDetailPanel(panels[0]);
+    return true;
 }
 
-function showEventAlertById(alertId){
+function closeAllEventDetailPanels(){
+    [...document.querySelectorAll('.event-detail-panel')].forEach(closeEventDetailPanel);
+}
+
+function showEventAlertById(title,alertId){
     focusedEventTitle="";
     focusedEventCountyFips="";
     clearFocusedEventCountyHighlight();
-    activeEventAlertPanelSelectedAlertId=alertId;
+    eventAlertPanelSelectedIds.set(title,alertId);
     refreshEventAlertPanelIfOpen();
     refreshEventCountyPanelIfOpen();
 
@@ -6146,7 +6111,7 @@ function focusEventCounty(title,fips){
 
     focusedEventTitle=title;
     focusedEventCountyFips=fips;
-    activeEventAlertPanelSelectedAlertId="";
+    eventAlertPanelSelectedIds.delete(title);
     updateFocusedEventCountyHighlight();
     refreshEventCountyPanelIfOpen();
     refreshEventAlertPanelIfOpen();
@@ -7880,13 +7845,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    if (e.key === 'Escape' && document.getElementById('eventCountyPanel').classList.contains('open')) {
-        closeEventCountyPanel();
-        return;
-    }
-
-    if (e.key === 'Escape' && document.getElementById('eventAlertPanel').classList.contains('open')) {
-        closeEventAlertPanel();
+    if (e.key === 'Escape' && closeTopmostEventDetailPanel()) {
         return;
     }
 
