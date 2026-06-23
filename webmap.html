@@ -488,6 +488,10 @@ body.sidebar-closed #openSidebar {
     padding:8px 10px 10px;
 }
 
+body.popup-windows-hidden [role="dialog"] {
+    display:none !important;
+}
+
 .event-county-row {
     display:grid;
     grid-template-columns:72px minmax(0,1fr) 52px minmax(118px,auto);
@@ -1854,6 +1858,7 @@ body.history-active #historyMapBadges {
         <kbd>T</kbd><span>Event title filter</span>
         <kbd>Q</kbd><span>Precipitation controls</span>
         <kbd>Y</kbd><span>Lightning controls</span>
+        <kbd>W</kbd><span>Show/hide all popup windows</span>
         <kbd>Esc</kbd><span>Close the active floating panel</span>
       </div>
     </div>
@@ -3512,6 +3517,28 @@ function getAlertTitleSummary(alertsByFips){
     });
 
     return { alertTitleCounts, countyTitleCounts };
+}
+
+function isEventTitleDisplayableCounty(fips){
+    return !!countyFeatureByFips[fips];
+}
+
+function getEventTitleDisplayableCountyCounts(alertsByFips){
+    const countiesByTitle={};
+
+    Object.entries(alertsByFips || {}).forEach(([fips,countyAlerts])=>{
+        if(!isEventTitleDisplayableCounty(fips) || !Array.isArray(countyAlerts)) return;
+        countyAlerts.forEach(alert=>{
+            if(!alert || typeof alert !== "object") return;
+            const title=alert.event || "Untitled";
+            if(!countiesByTitle[title]) countiesByTitle[title]=new Set();
+            countiesByTitle[title].add(fips);
+        });
+    });
+
+    return Object.fromEntries(
+        Object.entries(countiesByTitle).map(([title,counties])=>[title,counties.size])
+    );
 }
 
 function getUniqueAlertCount(alertsByFips){
@@ -5688,11 +5715,12 @@ function getFiltered(fips){
 
 function getEventTitleCounts(){
     const summary=getAlertTitleSummary(rawData);
+    const displayableCountyCounts=getEventTitleDisplayableCountyCounts(rawData);
     return Object.keys(summary.alertTitleCounts)
         .map(title=>[
             title,
             {
-                countyCount:summary.countyTitleCounts[title] || 0,
+                countyCount:displayableCountyCounts[title] || 0,
                 alertCount:summary.alertTitleCounts[title] || 0
             }
         ])
@@ -5852,7 +5880,7 @@ function getEventTitleCountyDetails(title){
             const matches=(alerts || []).filter(a=>(a.event || "Untitled") === title);
             if(!matches.length) return null;
             const feature=countyFeatureByFips[fips];
-            if(!feature) return null;
+            if(!isEventTitleDisplayableCounty(fips) || !feature) return null;
             const stateFips=String(feature.properties.STATE).padStart(2,'0');
             return {
                 fips,
@@ -7789,6 +7817,10 @@ function restoreMapView(slot) {
     map.setView([view.lat, view.lng], view.zoom, { animate: true });
 }
 
+function togglePopupWindowsVisibility(){
+    document.body.classList.toggle('popup-windows-hidden');
+}
+
 document.addEventListener('keydown', (e) => {
     if (shouldIgnoreShortcutEvent(e)) return;
 
@@ -7877,6 +7909,10 @@ document.addEventListener('keydown', (e) => {
     if (e.key === '?') {
         e.preventDefault();
         toggleShortcutHelpPanel();
+        return;
+    } else if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        togglePopupWindowsVisibility();
         return;
     } else if (handlePrecipSpaceSample(e)) {
         return;
