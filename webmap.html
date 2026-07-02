@@ -189,6 +189,108 @@ body.sidebar-closed #openSidebar {
     line-height:1.3;
 }
 
+.alert-reference-link {
+    border:0;
+    background:transparent;
+    color:#0645ad;
+    cursor:pointer;
+    font:inherit;
+    font-family:monospace;
+    padding:0;
+    text-decoration:underline;
+}
+
+.alert-reference-link:hover,
+.alert-reference-link:focus {
+    color:#002f6c;
+}
+
+.alert-id-link {
+    border:0;
+    background:transparent;
+    color:#0645ad;
+    cursor:pointer;
+    font:inherit;
+    font-family:monospace;
+    padding:0;
+    text-decoration:underline;
+}
+
+.alert-id-link:hover,
+.alert-id-link:focus {
+    color:#002f6c;
+}
+
+.alert-reference-tree {
+    display:grid;
+    gap:7px;
+}
+
+.alert-reference-tree-tools {
+    display:flex;
+    gap:6px;
+    margin-bottom:8px;
+}
+
+.alert-reference-tree-tools button {
+    border:1px solid #333;
+    background:#fff;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:12px;
+    padding:4px 8px;
+}
+
+.alert-reference-tree-tools button:hover {
+    background:#eee;
+}
+
+.alert-reference-tree-node {
+    border-left:2px solid #bbb;
+    padding-left:10px;
+}
+
+.alert-reference-tree-node.missing {
+    color:#777;
+}
+
+.alert-reference-tree-row {
+    display:grid;
+    grid-template-columns:86px minmax(0,1fr);
+    gap:8px;
+    align-items:start;
+}
+
+.alert-reference-tree-hash {
+    font-family:monospace;
+}
+
+.alert-reference-tree-meta {
+    min-width:0;
+}
+
+.alert-reference-tree-title {
+    font-weight:bold;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.alert-reference-tree-time {
+    color:#444;
+    font-family:monospace;
+}
+
+.alert-reference-tree-children {
+    display:grid;
+    gap:7px;
+    margin-top:7px;
+}
+
+.alert-reference-tree.collapsed .alert-reference-tree-children {
+    display:none;
+}
+
 .compact label { display:block; margin-bottom:4px; }
 
 #sidebar label {
@@ -1705,6 +1807,7 @@ body.history-active #historyMapBadges {
         <span class="startup-status-label">History: waiting</span>
         <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressHistory" class="startup-task-progress-bar"></div></div>
       </div>
+      <div id="startupStatusAlertRefs" class="startup-status-item">Alert refs: waiting</div>
       <div id="startupStatusPlot" class="startup-status-item">
         <span class="startup-status-label">Plot cache: waiting</span>
         <div class="startup-task-progress" aria-hidden="true"><div id="startupProgressPlot" class="startup-task-progress-bar"></div></div>
@@ -2159,6 +2262,8 @@ let historyPanelLoading = false;
 let historyLoadToken = 0;
 let historyFrameLoadToken = 0;
 let historyFrameCache = new Map();
+let historyAlertHashIndex = null;
+let historyAlertHashIndexLoadPromise = null;
 let historyIndexCache = [];
 let historyIndexReady = false;
 let historyIndexLoading = false;
@@ -2219,9 +2324,10 @@ const DEFAULT_PRIORITY_COLORS = {
     other:"#800080"
 };
 const HISTORY_DB_NAME = "nwsDashboardHistory";
-const HISTORY_DB_VERSION = 2;
+const HISTORY_DB_VERSION = 5;
 const HISTORY_STORE_NAME = "snapshots";
 const RADAR_TILE_STORE_NAME = "radarTiles";
+const HISTORY_ALERT_HASH_STORE_NAME = "alertHashIndex";
 const HISTORY_FRAME_DEDUP_MS = 60000;
 const RADAR_TILE_URL = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q/{z}/{x}/{y}.png";
 const HISTORY_RADAR_WMS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi";
@@ -2248,6 +2354,7 @@ const LIGHTNING_TILE_RETRY_LIMIT = 2;
 const startupStatusState = {
     setup:false,
     history:false,
+    alertRefs:false,
     plot:false,
     historyMap:false,
     counties:false,
@@ -2459,6 +2566,32 @@ document.addEventListener('mousemove',(e)=>{
 
 document.addEventListener('mouseup',()=>{
     draggedEventDetailPanel=null;
+});
+
+document.addEventListener('click',(e)=>{
+    const button=e.target.closest('.alert-reference-link[data-alert-ref-hash]');
+    if(!button) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openAlertHashPopup(button.dataset.alertRefHash);
+});
+
+document.addEventListener('click',(e)=>{
+    const button=e.target.closest('.alert-id-link[data-alert-id-hash]');
+    if(!button) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openAlertReferenceTreePopup(button.dataset.alertIdHash);
+});
+
+document.addEventListener('click',(e)=>{
+    const button=e.target.closest('[data-reference-tree-action]');
+    if(!button) return;
+    const tree=button.closest('.event-detail-body')?.querySelector('.alert-reference-tree');
+    if(!tree) return;
+    e.preventDefault();
+    e.stopPropagation();
+    tree.classList.toggle('collapsed',button.dataset.referenceTreeAction === 'collapse');
 });
 
 window.addEventListener('resize',()=>{
@@ -3145,8 +3278,20 @@ function getValidLatLng(latValue,lonValue){
     return [lat,lon];
 }
 
+function getAlertIdHashInput(value){
+    const raw=String(value || "");
+    let normalized=raw;
+    try{
+        normalized=decodeURIComponent(raw);
+    }catch(error){
+        normalized=raw;
+    }
+    const urnIndex=normalized.toLowerCase().indexOf("urn:oid");
+    return urnIndex >= 0 ? normalized.slice(urnIndex) : normalized;
+}
+
 function hashAlertId(str){
-    str=String(str || "");
+    str=getAlertIdHashInput(str);
     let hash=0;
     for(let i=0;i<str.length;i++){
         hash=(hash<<5)-hash+str.charCodeAt(i);
@@ -3164,6 +3309,29 @@ function getAlertReferenceHashes(alert){
         .filter(Boolean)
         .map(hashAlertId);
     return [...new Set(hashes)];
+}
+
+function renderAlertReferenceHashLinks(alert){
+    const hashes=getAlertReferenceHashes(alert);
+    if(!hashes.length) return "None";
+    return hashes.map(hash=>
+        `<button class="alert-reference-link" type="button" data-alert-ref-hash="${escapeHtml(hash)}" title="Search history for alert ${escapeHtml(hash)}">${escapeHtml(hash)}</button>`
+    ).join(", ");
+}
+
+function getAlertDisplayHash(alert){
+    return hashAlertId(alert?.id || getAlertCountId(alert));
+}
+
+function renderAlertIdHashLink(alert){
+    const hash=getAlertDisplayHash(alert);
+    return `<a class="alert-id-link" href="#alert-reference-tree-${encodeURIComponent(hash)}" data-alert-id-hash="${escapeHtml(hash)}" title="Show reference tree for alert ${escapeHtml(hash)}">${escapeHtml(hash)}</a>`;
+}
+
+function renderAlertHashPopupLink(hash){
+    const normalizedHash=String(hash || "").trim().toLowerCase();
+    if(!normalizedHash) return "N/A";
+    return `<a class="alert-reference-link alert-reference-tree-hash" href="#alert-${encodeURIComponent(normalizedHash)}" data-alert-ref-hash="${escapeHtml(normalizedHash)}" title="Show alert ${escapeHtml(normalizedHash)}">${escapeHtml(normalizedHash)}</a>`;
 }
 
 function isExpired(a){
@@ -3244,7 +3412,7 @@ function setStartupTaskProgress(key,percent){
 function openHistoryDb(){
     return new Promise((resolve,reject)=>{
         const request=indexedDB.open(HISTORY_DB_NAME,HISTORY_DB_VERSION);
-        request.onupgradeneeded=()=>{
+        request.onupgradeneeded=(event)=>{
             const db=request.result;
             if(!db.objectStoreNames.contains(HISTORY_STORE_NAME)){
                 db.createObjectStore(HISTORY_STORE_NAME,{ keyPath:"timestamp" });
@@ -3257,6 +3425,18 @@ function openHistoryDb(){
             }
             if(!radarTileStore.indexNames.contains("timestamp")){
                 radarTileStore.createIndex("timestamp","timestamp");
+            }
+            let alertHashStore;
+            if(!db.objectStoreNames.contains(HISTORY_ALERT_HASH_STORE_NAME)){
+                alertHashStore=db.createObjectStore(HISTORY_ALERT_HASH_STORE_NAME,{ keyPath:"hash" });
+            } else {
+                alertHashStore=request.transaction.objectStore(HISTORY_ALERT_HASH_STORE_NAME);
+            }
+            if(!alertHashStore.indexNames.contains("latestTimestamp")){
+                alertHashStore.createIndex("latestTimestamp","latestTimestamp");
+            }
+            if(event.oldVersion && event.oldVersion < 5){
+                alertHashStore.clear();
             }
         };
         request.onsuccess=()=>resolve(request.result);
@@ -3380,6 +3560,8 @@ async function pruneOldHistorySnapshots(){
         store.delete(IDBKeyRange.upperBound(cutoff));
     });
     await pruneOldRadarTiles(cutoff);
+    await pruneStoredHistoryAlertHashIndex(cutoff);
+    pruneHistoryAlertHashMemoryIndex(cutoff);
 }
 
 async function getStoredRadarTileBlob(frameId,coords){
@@ -3426,6 +3608,14 @@ async function saveHistorySnapshot(alerts,timestamp=Date.now()){
             });
             return;
         }
+        const cutoff=timestamp - getHistoryRetentionMs();
+        try{
+            await pruneStoredHistoryAlertHashIndex(cutoff);
+            pruneHistoryAlertHashMemoryIndex(cutoff);
+            await saveHistoryAlertHashFrameEntries(snapshot);
+        }catch(indexError){
+            console.warn("Unable to update alert hash index",indexError);
+        }
         updateHistoryCachesWithSnapshot(snapshot);
     }catch(error){
         console.warn("Unable to save history snapshot",error);
@@ -3457,6 +3647,220 @@ function cacheHistoryFrame(frame){
         const oldestKey=historyFrameCache.keys().next().value;
         historyFrameCache.delete(oldestKey);
     }
+}
+
+function addHistoryFrameToAlertHashIndex(frame){
+    if(!historyAlertHashIndex || !frame || !Number.isFinite(frame.timestamp)) return;
+
+    Object.entries(frame.alerts || {}).forEach(([fips,alerts])=>{
+        if(!Array.isArray(alerts)) return;
+        alerts.forEach(alert=>{
+            const id=alert?.id || getAlertCountId(alert);
+            const hash=hashAlertId(id).toLowerCase();
+            const existing=historyAlertHashIndex.get(hash);
+            if(existing && existing.timestamp >= frame.timestamp) return;
+            historyAlertHashIndex.set(hash,{ timestamp:frame.timestamp, fips, id });
+        });
+    });
+}
+
+function pruneHistoryAlertHashMemoryIndex(cutoff){
+    if(!historyAlertHashIndex) return;
+    for(const [hash,entry] of historyAlertHashIndex.entries()){
+        if(!entry || !Number.isFinite(entry.timestamp) || entry.timestamp <= cutoff){
+            historyAlertHashIndex.delete(hash);
+        }
+    }
+}
+
+function collectHistoryAlertHashEntries(frame){
+    const entriesByHash=new Map();
+    if(!frame || !Number.isFinite(frame.timestamp)) return entriesByHash;
+
+    Object.entries(frame.alerts || {}).forEach(([fips,alerts])=>{
+        if(!Array.isArray(alerts)) return;
+        alerts.forEach(alert=>{
+            const id=alert?.id || getAlertCountId(alert);
+            const hash=hashAlertId(id).toLowerCase();
+            if(!entriesByHash.has(hash)) entriesByHash.set(hash,[]);
+            entriesByHash.get(hash).push({ timestamp:frame.timestamp, fips, id });
+        });
+    });
+
+    return entriesByHash;
+}
+
+function getNewestHistoryAlertHashEntry(entries){
+    return (Array.isArray(entries) ? entries : [])
+        .filter(entry=>entry && Number.isFinite(entry.timestamp))
+        .sort((a,b)=>b.timestamp-a.timestamp)[0] || null;
+}
+
+function normalizeHistoryAlertHashRecord(hash,entries,cutoff=Date.now() - getHistoryRetentionMs()){
+    const seen=new Set();
+    const normalized=(Array.isArray(entries) ? entries : [])
+        .filter(entry=>entry && Number.isFinite(entry.timestamp) && entry.timestamp > cutoff)
+        .filter(entry=>{
+            const key=[entry.timestamp,entry.fips || "",entry.id || ""].join("|");
+            if(seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .sort((a,b)=>b.timestamp-a.timestamp);
+    const latest=getNewestHistoryAlertHashEntry(normalized);
+    return {
+        hash,
+        entries:normalized,
+        latestTimestamp:latest?.timestamp || 0
+    };
+}
+
+async function buildHistoryAlertHashIndex(){
+    const cutoff=Date.now() - getHistoryRetentionMs();
+    const index=new Map();
+    let latestIndexedTimestamp=-Infinity;
+
+    await withHistoryStore("readwrite",(store)=>{
+        const request=store.openCursor();
+        request.onsuccess=()=>{
+            const cursor=request.result;
+            if(!cursor) return;
+
+            const record=cursor.value || {};
+            const hash=record.hash || cursor.key;
+            const normalized=normalizeHistoryAlertHashRecord(hash,record.entries,cutoff);
+            const latest=getNewestHistoryAlertHashEntry(normalized.entries);
+            if(latest){
+                index.set(normalized.hash,latest);
+                latestIndexedTimestamp=Math.max(latestIndexedTimestamp,normalized.latestTimestamp);
+                if(normalized.entries.length !== (record.entries || []).length ||
+                   normalized.latestTimestamp !== record.latestTimestamp){
+                    cursor.update(normalized);
+                }
+            } else {
+                cursor.delete();
+            }
+
+            cursor.continue();
+        };
+    },HISTORY_ALERT_HASH_STORE_NAME);
+
+    historyAlertHashIndex=index;
+    await indexHistoryAlertHashesFromSnapshots(latestIndexedTimestamp);
+    return historyAlertHashIndex;
+}
+
+async function pruneStoredHistoryAlertHashIndex(cutoff=Date.now() - getHistoryRetentionMs()){
+    await withHistoryStore("readwrite",(store)=>{
+        const request=store.openCursor();
+        request.onsuccess=()=>{
+            const cursor=request.result;
+            if(!cursor) return;
+
+            const record=cursor.value || {};
+            const hash=record.hash || cursor.key;
+            const normalized=normalizeHistoryAlertHashRecord(hash,record.entries,cutoff);
+            if(normalized.entries.length){
+                if(normalized.entries.length !== (record.entries || []).length ||
+                   normalized.latestTimestamp !== record.latestTimestamp){
+                    cursor.update(normalized);
+                }
+            } else {
+                cursor.delete();
+            }
+
+            cursor.continue();
+        };
+    },HISTORY_ALERT_HASH_STORE_NAME);
+}
+
+async function saveHistoryAlertHashFrameEntries(frame){
+    const entriesByHash=collectHistoryAlertHashEntries(frame);
+    await saveHistoryAlertHashEntriesByHash(entriesByHash);
+}
+
+async function saveHistoryAlertHashEntriesByHash(entriesByHash){
+    if(!entriesByHash.size) return;
+    const cutoff=Date.now() - getHistoryRetentionMs();
+
+    await withHistoryStore("readwrite",(store)=>{
+        entriesByHash.forEach((entries,hash)=>{
+            const request=store.get(hash);
+            request.onsuccess=()=>{
+                const existing=request.result;
+                const record=normalizeHistoryAlertHashRecord(hash,[...(existing?.entries || []),...entries],cutoff);
+                if(record.entries.length){
+                    store.put(record);
+                } else {
+                    store.delete(hash);
+                }
+            };
+        });
+    },HISTORY_ALERT_HASH_STORE_NAME);
+}
+
+async function loadHistoryAlertHashIndexChunk(afterTimestamp,limit=300){
+    const entriesByHash=new Map();
+    let lastTimestamp=afterTimestamp;
+    let count=0;
+    let hasMore=false;
+
+    await withHistoryStore("readonly",(store)=>{
+        const range=Number.isFinite(afterTimestamp) ? IDBKeyRange.lowerBound(afterTimestamp + 1) : null;
+        const request=store.openCursor(range);
+        request.onsuccess=()=>{
+            const cursor=request.result;
+            if(!cursor) return;
+
+            if(count >= limit){
+                hasMore=true;
+                return;
+            }
+
+            const frame=cursor.value;
+            if(frame && Number.isFinite(frame.timestamp)){
+                count++;
+                lastTimestamp=frame.timestamp;
+                addHistoryFrameToAlertHashIndex(frame);
+                collectHistoryAlertHashEntries(frame).forEach((entries,hash)=>{
+                    if(!entriesByHash.has(hash)) entriesByHash.set(hash,[]);
+                    entriesByHash.get(hash).push(...entries);
+                });
+            }
+
+            cursor.continue();
+        };
+    });
+
+    return { entriesByHash, lastTimestamp, hasMore };
+}
+
+async function indexHistoryAlertHashesFromSnapshots(sinceTimestamp){
+    let afterTimestamp=Number.isFinite(sinceTimestamp) ? sinceTimestamp : -Infinity;
+
+    while(true){
+        const chunk=await loadHistoryAlertHashIndexChunk(afterTimestamp);
+        await saveHistoryAlertHashEntriesByHash(chunk.entriesByHash);
+        if(!chunk.hasMore) break;
+        afterTimestamp=chunk.lastTimestamp;
+    }
+}
+
+async function getHistoryAlertHashIndex(){
+    if(historyAlertHashIndex) return historyAlertHashIndex;
+    if(historyAlertHashIndexLoadPromise) return historyAlertHashIndexLoadPromise;
+
+    const clearGeneration=historyClearGeneration;
+    historyAlertHashIndexLoadPromise=buildHistoryAlertHashIndex()
+        .then(index=>{
+            historyAlertHashIndex=clearGeneration === historyClearGeneration ? index : new Map();
+            return historyAlertHashIndex;
+        })
+        .finally(()=>{
+            historyAlertHashIndexLoadPromise=null;
+        });
+
+    return historyAlertHashIndexLoadPromise;
 }
 
 function mergeHistoryIndexFrames(frames){
@@ -3564,6 +3968,8 @@ async function refreshHistoryRetentionWindow(){
 
     await pruneOldHistorySnapshots();
     historyFrameCache.clear();
+    historyAlertHashIndex=null;
+    historyAlertHashIndexLoadPromise=null;
     historyIndexCache=[];
     historyIndexReady=false;
     historyIndexLoadPromise=null;
@@ -3630,6 +4036,7 @@ function updateHistoryCachesWithSnapshot(snapshot){
     const metadata=createHistoryFrameMetadata(snapshot);
     mergeHistoryIndexFrames([metadata]);
     cacheHistoryFrame(snapshot);
+    addHistoryFrameToAlertHashIndex(snapshot);
 
     const plotCounts=getHistoryFramePlotCounts(snapshot);
     plotHistoryCache.frames=normalizeHistoryFrames([
@@ -3673,6 +4080,68 @@ async function loadHistoryFrame(timestamp){
 
     if(frame) cacheHistoryFrame(frame);
     return frame;
+}
+
+async function findHistoryAlertByHash(alertHash){
+    const normalizedHash=String(alertHash || "").trim().toLowerCase();
+    if(!normalizedHash) return null;
+
+    const index=await getHistoryAlertHashIndex();
+    const entry=index.get(normalizedHash);
+    if(!entry) return null;
+
+    const frame=await loadHistoryFrame(entry.timestamp);
+    const primaryAlerts=frame?.alerts?.[entry.fips] || [];
+    const alert=primaryAlerts.find(candidate=>{
+        const id=candidate?.id || getAlertCountId(candidate);
+        return id === entry.id || hashAlertId(id).toLowerCase() === normalizedHash;
+    });
+    if(alert) return { alert, fips:entry.fips, frame };
+
+    for(const [fips,alerts] of Object.entries(frame?.alerts || {})){
+        if(!Array.isArray(alerts)) continue;
+        const fallback=alerts.find(candidate=>{
+            const id=candidate?.id || getAlertCountId(candidate);
+            return hashAlertId(id).toLowerCase() === normalizedHash;
+        });
+        if(fallback) return { alert:fallback, fips, frame };
+    }
+
+    index.delete(normalizedHash);
+    return null;
+}
+
+function findActiveAlertByHash(alertHash){
+    const normalizedHash=String(alertHash || "").trim().toLowerCase();
+    if(!normalizedHash) return null;
+
+    const sources=[
+        { alertsByFips:rawData, timestamp:historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : Date.now(), source:"current" },
+        { alertsByFips:liveRawData, timestamp:Date.now(), source:"live" }
+    ];
+
+    for(const source of sources){
+        for(const [fips,alerts] of Object.entries(source.alertsByFips || {})){
+            if(!Array.isArray(alerts)) continue;
+            for(const alert of alerts){
+                if(getAlertDisplayHash(alert).toLowerCase() !== normalizedHash) continue;
+                return {
+                    alert,
+                    fips,
+                    frame:{
+                        timestamp:source.timestamp,
+                        source:source.source
+                    }
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+async function findAnyAlertByHash(alertHash){
+    return findActiveAlertByHash(alertHash) || await findHistoryAlertByHash(alertHash);
 }
 
 function normalizeHistoryFrames(frames){
@@ -3980,6 +4449,20 @@ function startHistoryIndexBackgroundLoad(){
     return historyIndexLoadPromise;
 }
 
+function startHistoryAlertHashIndexBackgroundLoad(){
+    setStartupStatus("alertRefs","Alert refs: indexing history");
+    return getHistoryAlertHashIndex()
+        .then(index=>{
+            setStartupStatus("alertRefs","Alert refs: " + index.size + (index.size === 1 ? " hash" : " hashes"),"done");
+            return index;
+        })
+        .catch(error=>{
+            setStartupStatus("alertRefs","Alert refs: unavailable","error");
+            console.warn("Unable to build alert reference hash index",error);
+            return new Map();
+        });
+}
+
 function startPlotHistoryBackgroundLoad(){
     if(plotHistoryLoading) return plotHistoryLoadPromise;
     const clearGeneration=historyClearGeneration;
@@ -4034,11 +4517,16 @@ function startHistoryBackgroundCaches(){
     if(startupBackgroundCachesStarted) return;
     startupBackgroundCachesStarted=true;
     setStartupStatus("history","History: waiting for map");
+    setStartupStatus("alertRefs","Alert refs: waiting for history");
     setStartupStatus("plot","Plot cache: waiting for history");
     setStartupStatus("historyMap","History map: waiting for plot cache");
     runWhenIdle(()=>{
         startHistoryIndexBackgroundLoad().finally(()=>{
-            runWhenIdle(()=>startPlotHistoryBackgroundLoad(),1800);
+            runWhenIdle(()=>{
+                startHistoryAlertHashIndexBackgroundLoad().finally(()=>{
+                    runWhenIdle(()=>startPlotHistoryBackgroundLoad(),1800);
+                });
+            },900);
         });
     },1800);
 }
@@ -5139,14 +5627,17 @@ async function clearHistorySnapshots(){
         document.getElementById('historyStatus').textContent="Clearing...";
         historyTime.textContent="Clearing saved history...";
         await nextPaint();
-        await withHistoryStores([HISTORY_STORE_NAME,RADAR_TILE_STORE_NAME],"readwrite",(stores)=>{
+        await withHistoryStores([HISTORY_STORE_NAME,RADAR_TILE_STORE_NAME,HISTORY_ALERT_HASH_STORE_NAME],"readwrite",(stores)=>{
             stores[HISTORY_STORE_NAME].clear();
             stores[RADAR_TILE_STORE_NAME].clear();
+            stores[HISTORY_ALERT_HASH_STORE_NAME].clear();
         });
         updateHistoryClearProgress(45,"Saved history deleted");
         await nextPaint();
         historyFrames=[];
         historyFrameCache.clear();
+        historyAlertHashIndex=null;
+        historyAlertHashIndexLoadPromise=null;
         historyIndexCache=[];
         historyIndexReady=true;
         historyIndexLoading=false;
@@ -5180,6 +5671,7 @@ async function clearHistorySnapshots(){
         populateHistoryMapEventTypeOptions(new Map());
         setStartupTaskProgress("history",100);
         setStartupStatus("history","History: 0 frames","done");
+        setStartupStatus("alertRefs","Alert refs: 0 hashes","done");
         setStartupTaskProgress("plot",100);
         setStartupStatus("plot","Plot cache: 0 frames","done");
         setStartupTaskProgress("historyMap",100);
@@ -6093,8 +6585,8 @@ function renderEventAlertPanelContent(panel,title){
 
 function closeEventDetailPanel(panel){
     if(!panel) return;
-    const panels=panel.dataset.type === 'county' ? eventCountyPanels : eventAlertPanels;
-    panels.delete(panel.dataset.title);
+    if(panel.dataset.type === 'county') eventCountyPanels.delete(panel.dataset.title);
+    if(panel.dataset.type === 'alert') eventAlertPanels.delete(panel.dataset.title);
     if(panel.dataset.type === 'alert') eventAlertPanelSelectedIds.delete(panel.dataset.title);
     if(draggedEventDetailPanel === panel) draggedEventDetailPanel=null;
     panel.remove();
@@ -6110,6 +6602,193 @@ function closeTopmostEventDetailPanel(){
 
 function closeAllEventDetailPanels(){
     [...document.querySelectorAll('.event-detail-panel')].forEach(closeEventDetailPanel);
+}
+
+function getHistoryAlertLocationLabel(fips){
+    const feature=countyFeatureByFips[fips];
+    if(!feature) return fips || "Unknown county";
+    const stateFips=String(feature.properties.STATE || "").padStart(2,'0');
+    const state=stateAbbreviations[stateFips] || stateFips;
+    return `${feature.properties.NAME || fips}, ${state} (${String(fips).padStart(5,'0')})`;
+}
+
+function renderHistoryAlertReferencePopup(panel,alertHash,result,statusText=""){
+    const heading=panel.querySelector('h3');
+    const body=panel.querySelector('.event-detail-body');
+    heading.textContent=`Alert ${alertHash}`;
+
+    if(statusText){
+        body.innerHTML=`<div class="alert">${escapeHtml(statusText)}</div>`;
+        return;
+    }
+
+    if(!result?.alert){
+        body.innerHTML=`<div class="alert">No matching alert found for ${escapeHtml(alertHash)}.</div>`;
+        return;
+    }
+
+    const alert=result.alert;
+    const frameTime=Number.isFinite(result.frame?.timestamp)
+        ? new Date(result.frame.timestamp).toLocaleString()
+        : "N/A";
+    const frameLabel=getAlertReferenceTreeFrameLabel(result);
+    body.innerHTML=`
+        <div class="alert">
+        <b>${escapeHtml(alert.event || "Untitled")}</b><br>
+        <span>${escapeHtml(alert.messageType || "Alert")}</span><br>
+        <b>County:</b> ${escapeHtml(getHistoryAlertLocationLabel(result.fips))}<br>
+        <b>Source:</b> ${escapeHtml(frameLabel)}<br>
+        <b>Frame time:</b> ${escapeHtml(frameTime)}<br>
+        <b>References:</b> ${renderAlertReferenceHashLinks(alert)}<br>
+        <i>${escapeHtml(alert.severity || "N/A")}</i><br><br>
+
+        <b>Start:</b> ${alert.sent ? escapeHtml(new Date(alert.sent).toLocaleString()) : "N/A"}<br>
+        <b>Expires:</b> ${alert.expires ? escapeHtml(new Date(alert.expires).toLocaleString()) : "N/A"}<br><br>
+
+        <b>Headline:</b><br>
+        ${escapeHtml(alert.headline || "No headline provided.")}<br><br>
+
+        <b>Description:</b><br>
+        ${escapeHtml(alert.description || "No description provided.")}<br><br>
+
+        <b>ID:</b> ${renderAlertIdHashLink(alert)}
+        </div>`;
+}
+
+async function openAlertHashPopup(alertHash){
+    const hash=String(alertHash || "").trim().toLowerCase();
+    if(!hash) return;
+
+    const panel=createEventDetailPanel('history-reference',hash);
+    renderHistoryAlertReferencePopup(panel,hash,null,"Searching alerts...");
+    bringEventDetailPanelToFront(panel);
+
+    try{
+        const result=await findAnyAlertByHash(hash);
+        if(!panel.isConnected) return;
+        renderHistoryAlertReferencePopup(panel,hash,result);
+        clampEventDetailPanel(panel);
+    }catch(error){
+        console.warn("Unable to search for alert hash",error);
+        if(panel.isConnected){
+            renderHistoryAlertReferencePopup(panel,hash,null,"Unable to search alerts.");
+        }
+    }
+}
+
+function getAlertReferenceTreeIssuedLabel(result){
+    const alert=result?.alert;
+    const issued=getAlertIssuedTime(alert);
+    if(Number.isFinite(issued)) return new Date(issued).toLocaleString();
+    if(Number.isFinite(result?.frame?.timestamp)) return new Date(result.frame.timestamp).toLocaleString();
+    return "N/A";
+}
+
+function getAlertReferenceTreeFrameLabel(result){
+    if(result?.frame?.source === "current") return historyModeActive ? "current history frame" : "current alerts";
+    if(result?.frame?.source === "live") return "live alerts";
+    if(Number.isFinite(result?.frame?.timestamp)) return "saved " + new Date(result.frame.timestamp).toLocaleString();
+    return "not found in retained history";
+}
+
+async function buildAlertReferenceTreeNode(alertHash,seedResult=null,visited=new Set(),depth=0){
+    const hash=String(alertHash || "").trim().toLowerCase();
+    const node={
+        hash,
+        result:null,
+        children:[],
+        cycle:false,
+        depthLimit:false
+    };
+    if(!hash) return node;
+    if(visited.has(hash)){
+        node.cycle=true;
+        return node;
+    }
+    if(depth > 24){
+        node.depthLimit=true;
+        return node;
+    }
+
+    const nextVisited=new Set(visited);
+    nextVisited.add(hash);
+    node.result=seedResult || await findAnyAlertByHash(hash);
+
+    const references=getAlertReferenceHashes(node.result?.alert);
+    for(const referenceHash of references){
+        node.children.push(await buildAlertReferenceTreeNode(referenceHash,null,nextVisited,depth + 1));
+    }
+
+    return node;
+}
+
+function renderAlertReferenceTreeNode(node){
+    const result=node.result;
+    const alert=result?.alert;
+    const title=alert
+        ? escapeHtml(alert.event || alert.headline || "Untitled")
+        : "Not found";
+    const issued=alert ? escapeHtml(getAlertReferenceTreeIssuedLabel(result)) : "";
+    const source=escapeHtml(getAlertReferenceTreeFrameLabel(result));
+    const classes=["alert-reference-tree-node"];
+    if(!alert) classes.push("missing");
+
+    let status="";
+    if(node.cycle) status="Already shown above";
+    if(node.depthLimit) status="Reference depth limit reached";
+    if(!alert && !status) status="No retained history match";
+
+    return `
+        <div class="${classes.join(" ")}">
+            <div class="alert-reference-tree-row">
+                ${renderAlertHashPopupLink(node.hash)}
+                <span class="alert-reference-tree-meta">
+                    <div class="alert-reference-tree-title" title="${title}">${title}</div>
+                    ${issued ? `<div class="alert-reference-tree-time">Issued: ${issued}</div>` : ""}
+                    <div class="alert-reference-tree-time">${source}</div>
+                    ${status ? `<div>${escapeHtml(status)}</div>` : ""}
+                </span>
+            </div>
+            ${node.children.length ? `<div class="alert-reference-tree-children">${node.children.map(renderAlertReferenceTreeNode).join("")}</div>` : ""}
+        </div>`;
+}
+
+function renderAlertReferenceTreePopup(panel,alertHash,tree=null,statusText=""){
+    const heading=panel.querySelector('h3');
+    const body=panel.querySelector('.event-detail-body');
+    heading.textContent=`Reference Tree ${alertHash}`;
+    if(statusText){
+        body.innerHTML=`<div class="alert">${escapeHtml(statusText)}</div>`;
+        return;
+    }
+    body.innerHTML=`
+        <div class="alert-reference-tree-tools">
+            <button type="button" data-reference-tree-action="expand">Expand</button>
+            <button type="button" data-reference-tree-action="collapse">Collapse</button>
+        </div>
+        <div class="alert-reference-tree">${renderAlertReferenceTreeNode(tree)}</div>`;
+}
+
+async function openAlertReferenceTreePopup(alertHash){
+    const hash=String(alertHash || "").trim().toLowerCase();
+    if(!hash) return;
+
+    const panel=createEventDetailPanel('reference-tree',hash);
+    renderAlertReferenceTreePopup(panel,hash,null,"Building reference tree...");
+    bringEventDetailPanelToFront(panel);
+
+    try{
+        const seedResult=await findAnyAlertByHash(hash);
+        const tree=await buildAlertReferenceTreeNode(hash,seedResult);
+        if(!panel.isConnected) return;
+        renderAlertReferenceTreePopup(panel,hash,tree);
+        clampEventDetailPanel(panel);
+    }catch(error){
+        console.warn("Unable to build alert reference tree",error);
+        if(panel.isConnected){
+            renderAlertReferenceTreePopup(panel,hash,null,"Unable to build reference tree.");
+        }
+    }
 }
 
 function showEventAlertById(title,alertId){
@@ -6271,7 +6950,7 @@ function showAlertPolygonsInSidebar(features){
 
         <b>Headline:</b><br>${alert.headline || "No headline provided."}<br><br>
         <b>Description:</b><br>${alert.description || "No description provided."}<br><br>
-        <b>ID:</b> ${hashAlertId(alert.id)}
+        <b>ID:</b> ${renderAlertIdHashLink(alert)}
         </div>`;
     });
     content.innerHTML=html;
@@ -6814,7 +7493,7 @@ function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
         <div class="alert" ${isFocused ? 'style="background:#fff7cc;border-left:4px solid #d99a00;padding-left:8px;"' : ""}>
         <b>${a.event}</b><br>
         <span>${a.messageType || "Alert"}</span><br>
-        <b>References:</b> ${getAlertReferenceHashes(a).join(", ") || "None"}<br>
+        <b>References:</b> ${renderAlertReferenceHashLinks(a)}<br>
         <i>${a.severity}</i><br><br>
 
         <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
@@ -6826,7 +7505,7 @@ function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
         <b>Description:</b><br>
         ${a.description || "No description provided."}<br><br>
 
-        <b>ID:</b> ${hashAlertId(a.id)}
+        <b>ID:</b> ${renderAlertIdHashLink(a)}
         </div>`;
     });
 
@@ -6889,7 +7568,7 @@ async function loadHistoryMapCountyAlertsIntoSidebar(fips){
             <div class="alert">
             <b>${escapeHtml(a.event || "Untitled")}</b><br>
             <span>${escapeHtml(a.messageType || "Alert")}</span><br>
-            <b>References:</b> ${escapeHtml(getAlertReferenceHashes(a).join(", ") || "None")}<br>
+            <b>References:</b> ${renderAlertReferenceHashLinks(a)}<br>
             <i>${escapeHtml(a.severity || "N/A")}</i><br><br>
 
             <b>Start:</b> ${a.sent ? new Date(a.sent).toLocaleString() : "N/A"}<br>
@@ -6901,7 +7580,7 @@ async function loadHistoryMapCountyAlertsIntoSidebar(fips){
             <b>Description:</b><br>
             ${escapeHtml(a.description || "No description provided.")}<br><br>
 
-            <b>ID:</b> ${hashAlertId(a.id)}
+            <b>ID:</b> ${renderAlertIdHashLink(a)}
             </div>
         `).join("");
         cacheHistoryMapSidebarHtml(cacheKey,html);
