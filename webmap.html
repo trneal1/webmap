@@ -3292,12 +3292,41 @@ function getAlertIdHashInput(value){
 
 function hashAlertId(str){
     str=getAlertIdHashInput(str);
+    return hashText(str);
+}
+
+function hashText(str){
+    str=String(str || "");
     let hash=0;
     for(let i=0;i<str.length;i++){
         hash=(hash<<5)-hash+str.charCodeAt(i);
         hash|=0;
     }
     return (hash>>>0).toString(16);
+}
+
+function stableStringify(value){
+    if(value === null || typeof value !== "object") return JSON.stringify(value);
+    if(Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+    return "{" + Object.keys(value).sort().map(key=>
+        JSON.stringify(key) + ":" + stableStringify(value[key])
+    ).join(",") + "}";
+}
+
+function getAlertMessageHash(alert){
+    return hashText(stableStringify(alert || {}));
+}
+
+function getAlertDescriptionHash(alert){
+    return hashText(alert?.description || "");
+}
+
+function renderAlertMessageHashLine(alert){
+    return `<b>Message hash:</b> <span class="alert-reference-tree-hash">${escapeHtml(getAlertMessageHash(alert))}</span><br>`;
+}
+
+function renderAlertDescriptionHashLine(alert){
+    return `<b>Description hash:</b> <span class="alert-reference-tree-hash">${escapeHtml(getAlertDescriptionHash(alert))}</span><br>`;
 }
 
 function getAlertReferenceHashes(alert){
@@ -6636,6 +6665,7 @@ function renderHistoryAlertReferencePopup(panel,alertHash,result,statusText=""){
         <div class="alert">
         <b>${escapeHtml(alert.event || "Untitled")}</b><br>
         <span>${escapeHtml(alert.messageType || "Alert")}</span><br>
+        ${renderAlertMessageHashLine(alert)}
         <b>County:</b> ${escapeHtml(getHistoryAlertLocationLabel(result.fips))}<br>
         <b>Source:</b> ${escapeHtml(frameLabel)}<br>
         <b>Frame time:</b> ${escapeHtml(frameTime)}<br>
@@ -6649,7 +6679,8 @@ function renderHistoryAlertReferencePopup(panel,alertHash,result,statusText=""){
         ${escapeHtml(alert.headline || "No headline provided.")}<br><br>
 
         <b>Description:</b><br>
-        ${escapeHtml(alert.description || "No description provided.")}<br><br>
+        ${escapeHtml(alert.description || "No description provided.")}<br>
+        ${renderAlertDescriptionHashLine(alert)}<br>
 
         <b>ID:</b> ${renderAlertIdHashLink(alert)}
         </div>`;
@@ -6941,6 +6972,7 @@ function showAlertPolygonsInSidebar(features){
         <div class="alert" style="background:#fff7cc;border-left:4px solid ${getColor(getPriorityCategory(alert.event))};padding-left:8px;">
         <b>${alert.event}</b><br>
         <span>${alert.messageType || "Alert"}</span><br>
+        ${renderAlertMessageHashLine(alert)}
         <i>${alert.severity}</i><br><br>
 
         <b>Area:</b> ${alert.areaDesc || "N/A"}<br>
@@ -6949,7 +6981,8 @@ function showAlertPolygonsInSidebar(features){
         <b>Expires in:</b> <span class="timer" data-exp="${alert.expires || ""}"></span><br><br>
 
         <b>Headline:</b><br>${alert.headline || "No headline provided."}<br><br>
-        <b>Description:</b><br>${alert.description || "No description provided."}<br><br>
+        <b>Description:</b><br>${alert.description || "No description provided."}<br>
+        ${renderAlertDescriptionHashLine(alert)}<br>
         <b>ID:</b> ${renderAlertIdHashLink(alert)}
         </div>`;
     });
@@ -7493,6 +7526,7 @@ function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
         <div class="alert" ${isFocused ? 'style="background:#fff7cc;border-left:4px solid #d99a00;padding-left:8px;"' : ""}>
         <b>${a.event}</b><br>
         <span>${a.messageType || "Alert"}</span><br>
+        ${renderAlertMessageHashLine(a)}
         <b>References:</b> ${renderAlertReferenceHashLinks(a)}<br>
         <i>${a.severity}</i><br><br>
 
@@ -7503,7 +7537,8 @@ function showSidebar(fips,name,f,shouldOpen=true,focusAlertId=null){
         <span class="timer" data-exp="${a.expires}" data-ref="${historyModeActive && historyFrameTimestamp ? historyFrameTimestamp : ""}"></span><br><br>
 
         <b>Description:</b><br>
-        ${a.description || "No description provided."}<br><br>
+        ${a.description || "No description provided."}<br>
+        ${renderAlertDescriptionHashLine(a)}<br>
 
         <b>ID:</b> ${renderAlertIdHashLink(a)}
         </div>`;
@@ -7568,6 +7603,7 @@ async function loadHistoryMapCountyAlertsIntoSidebar(fips){
             <div class="alert">
             <b>${escapeHtml(a.event || "Untitled")}</b><br>
             <span>${escapeHtml(a.messageType || "Alert")}</span><br>
+            ${renderAlertMessageHashLine(a)}
             <b>References:</b> ${renderAlertReferenceHashLinks(a)}<br>
             <i>${escapeHtml(a.severity || "N/A")}</i><br><br>
 
@@ -7578,7 +7614,8 @@ async function loadHistoryMapCountyAlertsIntoSidebar(fips){
             ${escapeHtml(a.headline || "No headline provided.")}<br><br>
 
             <b>Description:</b><br>
-            ${escapeHtml(a.description || "No description provided.")}<br><br>
+            ${escapeHtml(a.description || "No description provided.")}<br>
+            ${renderAlertDescriptionHashLine(a)}<br>
 
             <b>ID:</b> ${renderAlertIdHashLink(a)}
             </div>
